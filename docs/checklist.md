@@ -1,0 +1,49 @@
+# Build and submission checklist
+
+Status is based on evidence from November 3, 2026. “Implemented” means source exists; “verified” means the listed check actually ran. See [testing.md](testing.md) for scope and limitations.
+
+## Product
+
+- [x] Shopper can choose a fictional store, enter preferences, and receive inventory-grounded meal bundles. API smoke and Playwright UI test passed.
+- [x] Deterministic optimizer tests cover budget, serving, stock, store, pickup, expiry, explicit exclusions, and allergen constraints.
+- [x] Seeded optimizer benchmark compared 12 store/request scenarios with a greedy discount baseline; feasibility matched at 11/12, returned optimizer bundles had 0 independently checked violations, and runtime results are recorded in [optimization.md](optimization.md). No general superiority claim is made.
+- [x] Unknown/partial allergen status is preserved; the optimizer does not treat unknown data as allergy-safe.
+- [x] Price, comparable value, and savings use integer cents and inventory-derived values.
+- [x] No feasible bundle returns a constraint explanation instead of relaxing constraints silently.
+- [x] Merchant can view seeded inventory and orders, edit existing stock and prices, import CSV inventory, and confirm pickup for paid orders. Dashboard load passed; inventory edit/import/pickup were not exercised in E2E.
+- [x] Shopper order-history API and receipt page are implemented; authorization/payload tests pass. No paid receipt exists because live capture is blocked.
+- [x] Clean database setup produced 3 fictional merchants/stores, 45 products, and 6 recipes.
+- [ ] Full merchant account/store setup, pickup-window management, and operator reconciliation actions are not implemented.
+
+## AI and payments
+
+- [x] App calls only `accounts/fireworks/models/deepseek-v4p1-flash-1017`; live Resqiva route request and Playwright planning both succeeded.
+- [x] No alternate model or silent fallback is configured.
+- [x] AI output cannot select inventory IDs, set totals, authorize payment, or mutate stock; schema tests and code path separate it from financial actions.
+- [x] Server recomputes totals from saved inventory and uses a serializable stock reservation; API smoke verified reserve and exact release counts.
+- [ ] PayPal Sandbox order creation, buyer approval, capture, paid status, and sold-inventory update are not verified. Current OAuth attempt returned `invalid_client`.
+- [x] Cancellation and retry behavior were exercised in the local API smoke. Retry was blocked by credential rejection; it did not create a provider order.
+- [ ] Reservation expiry, concurrent final-unit access, actual webhook delivery/replay, and reconciliation after successful capture plus database failure remain untested.
+- [ ] A matching PayPal Sandbox app credential set, Sandbox buyer approval, `PAYPAL_WEBHOOK_ID`, and reachable HTTPS webhook endpoint are required for the remaining live payment checks.
+
+## Quality and submission
+
+- [x] Clean local Postgres migration/seed and `npm run demo:up` startup verified.
+- [x] `npm run lint`, `npm run typecheck`, `npm test` (40/40), `npm run build`, `npm run smoke:local`, and `npm run e2e:local` passed.
+- [x] `npm audit --omit=dev` found no production dependency advisories.
+- [ ] Full `npm audit` reports 17 moderate development-tool dependency findings rooted in `minimatch`, with no fix available; a dedicated credential scanner and comprehensive security review remain outstanding.
+- [ ] Public repository publication and visibility of the MIT license in the repository About area are pending explicit owner approval.
+- [ ] Free, unrestricted judge access is not ready: no public demo, and a local AI run requires the configured Fireworks credential.
+- [ ] Public YouTube demo under three minutes is not recorded or uploaded.
+- [x] Official rules and deadline were rechecked November 3, 2026; final submission content still needs owner review.
+- [ ] Hosted demo is unverified and not deployed. Hosting is optional under official rules when complete local run instructions work.
+- [ ] No push, public deploy, video upload, or Devpost submission has been made. Each remains gated on explicit owner approval.
+
+## Exact external blockers
+
+- **PayPal account:** the currently bound Sandbox client ID/secret pair is rejected (`invalid_client`). Replace them in the managed environment with a matching pair from the same Sandbox app; do not send values in chat.
+- **Buyer account:** a Sandbox buyer must approve the browser checkout after the merchant app credential issue is fixed.
+- **Network policy:** restricted egress is enforced and allows `api-m.sandbox.paypal.com` and `api.fireworks.ai`. It does not list `www.paypal.com`, which the browser PayPal JavaScript SDK may need. Add that host only through the managed environment's approved network configuration; no bypass was attempted.
+- **Webhook:** no webhook ID is configured and there is no public HTTPS endpoint for PayPal delivery.
+- **Judge access:** a stable publicly accessible demo or an approved plan for free, unrestricted judge access is still needed. Local setup is reproducible but needs a Fireworks key to use AI.
+- **Publishing approvals:** owner approval is still required to push the repository, deploy publicly, upload a video, and submit on Devpost.

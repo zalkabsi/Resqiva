@@ -1,0 +1,32 @@
+# PayPal AI Hackathon 2026 compliance and traceability
+
+**Rules rechecked:** November 3, 2026. This matrix separates official requirements, implementation status, and evidence. No submission or public release has been made.
+
+| Requirement | Official source | Implementation | Verification / evidence | Status |
+|---|---|---|---|---|
+| Submit by November 12, 2026 at 12:00 p.m. Pacific / 11:00 p.m. Riyadh | [Official rules, §1](https://paypalaihackathon.devpost.com/rules) | Prepare the submission before deadline | Current rules rechecked Nov 3; no submission receipt | Pending |
+| Meet age, residency, and team eligibility | [Official rules](https://paypalaihackathon.devpost.com/rules), [FAQ](https://paypalaihackathon.devpost.com/details/faqs) | Owner confirms eligibility and team representative | Owner verification | Owner confirmation required |
+| Meaningfully use the PayPal Developer Platform and an AI tool, with PayPal central | [Hackathon overview](https://paypalaihackathon.devpost.com/), [official rules](https://paypalaihackathon.devpost.com/rules) | Inventory-grounded meal planning leads into one-store PayPal Sandbox checkout; the model parses preferences only | App Fireworks route and planning passed; PayPal Sandbox OAuth returned `invalid_client` | Partial; payment flow not verified |
+| Name the AI model and explain the use | [Hackathon overview](https://paypalaihackathon.devpost.com/) | Only `accounts/fireworks/models/deepseek-v4p1-flash-1017` parses natural-language preferences; deterministic code validates inventory and controls totals | API smoke and Playwright UI test used the actual app route and exact model; mocked model tests are separate | Verified for AI path |
+| Explain significant updates for an existing project after October 1, 2026 | [Official rules](https://paypalaihackathon.devpost.com/rules) | This local work started from an empty checkout/repository; no prior source was present to update | Initial local commit dated after Oct 1; repository was empty at project start | New local project; owner must accurately describe its origin |
+| Provide public GitHub/GitLab/Bitbucket source, assets, setup instructions, and visible OSI-approved license | [Official rules, submission requirements](https://paypalaihackathon.devpost.com/rules) | README, source, setup docs, and MIT license prepared locally | Local files exist; GitHub slug was empty at last remote check; no push has been made | Blocked pending explicit publication approval |
+| Provide a functional demo, hosted or reproducible from full setup instructions | [Overview](https://paypalaihackathon.devpost.com/), [official rules](https://paypalaihackathon.devpost.com/rules) | Docker Compose + Prisma + Next.js setup; optional hosting proposal documented | Fresh local database migration, seed, app startup, API smoke, and browser planning test passed | Local path verified; external judge access pending |
+| Provide a public YouTube demo shorter than three minutes showing the actual app | [Official rules, submission requirements](https://paypalaihackathon.devpost.com/rules) | A truthful 165-second storyboard is in [demo-guide.md](demo-guide.md) | No video recorded or uploaded; payment portion is blocked | Pending |
+| Allow judges free, unrestricted access through the judging period (Dec 1–15, 2026) | [Official rules, testing](https://paypalaihackathon.devpost.com/rules) | Intended hosted app would keep the Fireworks key server-side; local setup currently needs the operator's key | No hosted demo; no arrangement supplies judges a free working AI path | Blocked |
+| Address technology, design, impact, innovation, and presentation | [Official rules, judging criteria](https://paypalaihackathon.devpost.com/rules) | Deterministic optimizer, shopper/merchant views, transparent prices, and conservative impact method | Unit tests, API smoke, browser E2E, seeded optimizer benchmark, and [impact-methodology.md](impact-methodology.md) | Partially evidenced; payment and measured transaction outcomes unavailable |
+
+## Current verified evidence
+
+- `npm run lint`, `npm run typecheck`, `npm test` (40/40), `npm run build`, `npm run smoke:local`, and `npm run e2e:local` passed on November 3, 2026. Exact scope is in [testing.md](testing.md).
+- The real Resqiva preference-parser route returned validated preferences through the configured Fireworks service using only the required model. This is application-level AI evidence, not just a direct provider probe.
+- The API smoke verified database-backed planning, a three-unit stock reservation and exact cancellation release, repeated requests, customer order history, and merchant dashboard data.
+- The optimizer benchmark compared 12 deterministic seeded scenarios against the documented greedy baseline. Feasibility matched at 11/12 with zero independently checked optimizer output violations; it did not show a general performance advantage.
+- PayPal order creation reached the Sandbox OAuth endpoint and was rejected with `invalid_client`. There is no buyer-approved order, capture, paid status, sold-stock update, or webhook delivery.
+- `PAYPAL_WEBHOOK_ID` is missing. The webhook route returned HTTP 503 before processing an event.
+- Managed network policy is restricted and enforced. It allows `api.fireworks.ai` and `api-m.sandbox.paypal.com`; it does not list `www.paypal.com`, used by the browser JS SDK.
+
+## Publication and sponsor notes
+
+Official rules do not require a hosted deployment if judges can run the complete repository setup; the master build prompt treats hosting as a project goal. Render is only a proposal and has not been tested. A public source repository, publicly accessible YouTube video, and Devpost submission remain required submission materials. Owner approval is required before pushing, deploying publicly, uploading, or submitting.
+
+The AI provider/model is named accurately. No AG Grid, Channel3, or Postman sponsor integration is claimed. Sponsor eligibility must be checked against each sponsor's current terms before submission.

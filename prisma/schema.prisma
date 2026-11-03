@@ -1,0 +1,535 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  CUSTOMER
+  MERCHANT_ADMIN
+  MERCHANT_STAFF
+  ADMIN
+}
+
+enum ReservationStatus {
+  PENDING
+  RESERVED
+  PAYMENT_APPROVED
+  PAID
+  CANCELLED
+  EXPIRED
+  FULFILLED
+  PAYMENT_EXCEPTION
+}
+
+enum OrderStatus {
+  PENDING
+  PAYMENT_APPROVED
+  PAID
+  CANCELLED
+  EXPIRED
+  FULFILLED
+  PAYMENT_EXCEPTION
+}
+
+enum PaymentStatus {
+  CREATED
+  APPROVED
+  CAPTURED
+  DECLINED
+  FAILED
+  REFUNDED
+  UNKNOWN
+}
+
+enum PaymentTransactionType {
+  ORDER_CREATE
+  CAPTURE
+  REFUND
+  RECONCILIATION
+}
+
+enum AllergenDataStatus {
+  VERIFIED
+  PARTIAL
+  UNKNOWN
+}
+
+enum ExpirationType {
+  USE_BY
+  SELL_BY
+  BEST_BEFORE
+  EXPIRATION
+  UNKNOWN
+}
+
+enum OptimizationStatus {
+  COMPLETED
+  NO_FEASIBLE_BUNDLE
+  FAILED
+}
+
+enum WebhookProcessingStatus {
+  RECEIVED
+  VERIFIED
+  PROCESSED
+  FAILED
+}
+
+enum AuditActorType {
+  CUSTOMER
+  MERCHANT
+  SYSTEM
+  ADMIN
+}
+
+model User {
+  id                    String              @id @default(cuid())
+  email                 String              @unique
+  displayName           String
+  role                  UserRole            @default(CUSTOMER)
+  isDemo                Boolean             @default(false)
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+  merchantMemberships   MerchantMember[]
+  preferences           CustomerPreference[]
+  optimizationRuns      OptimizationRun[]
+  bundles               Bundle[]
+  reservations          Reservation[]
+  orders                Order[]
+  auditEvents           AuditEvent[]
+
+  @@index([role])
+  @@index([isDemo])
+}
+
+model Merchant {
+  id          String           @id @default(cuid())
+  slug        String           @unique
+  name        String
+  description String
+  isDemo      Boolean          @default(false)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  stores      Store[]
+  products    Product[]
+  members     MerchantMember[]
+
+  @@index([isDemo])
+}
+
+model MerchantMember {
+  id         String   @id @default(cuid())
+  merchantId String
+  userId     String
+  role       UserRole @default(MERCHANT_STAFF)
+  createdAt  DateTime @default(now())
+  merchant   Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([merchantId, userId])
+  @@index([userId])
+}
+
+model Store {
+  id               String          @id @default(cuid())
+  merchantId       String
+  slug             String          @unique
+  name             String
+  city             String
+  timezone         String          @default("Asia/Riyadh")
+  pickupAddress    String
+  currency         String          @default("USD")
+  isDemo           Boolean         @default(false)
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  merchant         Merchant        @relation(fields: [merchantId], references: [id], onDelete: Restrict)
+  inventoryLots    InventoryLot[]
+  pickupWindows    PickupWindow[]
+  optimizationRuns OptimizationRun[]
+  bundles          Bundle[]
+  reservations     Reservation[]
+  orders           Order[]
+  impactMetrics    ImpactMetric[]
+
+  @@index([merchantId])
+  @@index([isDemo])
+}
+
+model Product {
+  id                  String              @id @default(cuid())
+  merchantId          String
+  sku                 String              @unique
+  name                String
+  brand               String?
+  category            String
+  description         String
+  ingredients         String[]            @default([])
+  knownAllergens      String[]            @default([])
+  dietaryTags         String[]            @default([])
+  allergenDataStatus  AllergenDataStatus  @default(UNKNOWN)
+  isDemo              Boolean             @default(false)
+  isActive            Boolean             @default(true)
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+  merchant            Merchant            @relation(fields: [merchantId], references: [id], onDelete: Restrict)
+  inventoryLots       InventoryLot[]
+  recipeRequirements  RecipeRequirement[]
+
+  @@index([merchantId, category])
+  @@index([isActive])
+  @@index([allergenDataStatus])
+}
+
+model InventoryLot {
+  id                   String          @id @default(cuid())
+  storeId              String
+  productId            String
+  lotCode              String
+  quantityOnHand       Int             @default(0)
+  quantityReserved     Int             @default(0)
+  quantitySold         Int             @default(0)
+  discountedPriceCents Int
+  originalPriceCents   Int
+  currency             String          @default("USD")
+  expiresAt            DateTime?
+  expirationType       ExpirationType  @default(UNKNOWN)
+  sellable             Boolean         @default(true)
+  notes                String?
+  createdAt            DateTime        @default(now())
+  updatedAt            DateTime        @updatedAt
+  store                Store           @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  product              Product         @relation(fields: [productId], references: [id], onDelete: Restrict)
+  bundleItems          BundleItem[]
+  reservationItems     ReservationItem[]
+  orderItems           OrderItem[]
+
+  @@unique([storeId, productId, lotCode])
+  @@index([storeId, sellable, expiresAt])
+  @@index([productId])
+}
+
+model PickupWindow {
+  id                   String          @id @default(cuid())
+  storeId              String
+  windowKey            String          @unique
+  startsAt             DateTime
+  endsAt               DateTime
+  lastReservationAt    DateTime
+  capacityUnits        Int             @default(100)
+  reservedUnits        Int             @default(0)
+  active               Boolean         @default(true)
+  createdAt            DateTime        @default(now())
+  updatedAt            DateTime        @updatedAt
+  store                Store           @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  bundles              Bundle[]
+  reservations         Reservation[]
+  orders               Order[]
+
+  @@index([storeId, startsAt, endsAt, active])
+}
+
+model CustomerPreference {
+  id                   String           @id @default(cuid())
+  userId               String?
+  sourceText           String
+  parsedPreferences    Json
+  provider             String
+  model                String
+  createdAt            DateTime         @default(now())
+  user                 User?            @relation(fields: [userId], references: [id], onDelete: SetNull)
+  optimizationRuns     OptimizationRun[]
+
+  @@index([userId, createdAt])
+}
+
+model RecipeTemplate {
+  id                   String              @id @default(cuid())
+  slug                 String              @unique
+  title                String
+  description          String
+  cuisine              String?
+  defaultServings      Int                 @default(2)
+  dietaryTags          String[]            @default([])
+  instructions         Json
+  pantryStaples        String[]            @default([])
+  isActive             Boolean             @default(true)
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+  requirements         RecipeRequirement[]
+  bundleMeals          BundleMeal[]
+
+  @@index([isActive])
+}
+
+model RecipeRequirement {
+  id                   String         @id @default(cuid())
+  recipeId             String
+  ingredientKey        String
+  label                String
+  category             String
+  quantityPerServing   Decimal        @db.Decimal(10, 3)
+  unit                 String
+  required             Boolean        @default(true)
+  pantryStaple         Boolean        @default(false)
+  productId            String?
+  recipe               RecipeTemplate @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  product              Product?        @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  @@unique([recipeId, ingredientKey])
+  @@index([category, ingredientKey])
+  @@index([productId])
+}
+
+model OptimizationRun {
+  id                   String              @id @default(cuid())
+  userId               String?
+  storeId              String?
+  preferenceId         String?
+  status               OptimizationStatus  @default(COMPLETED)
+  candidateCount       Int                 @default(0)
+  feasibleCount        Int                 @default(0)
+  selectedCount        Int                 @default(0)
+  constraintViolations Int                 @default(0)
+  baselineSavingsCents Int?
+  objectiveWeights     Json?
+  resultMetrics        Json?
+  model                String?
+  createdAt            DateTime            @default(now())
+  user                 User?               @relation(fields: [userId], references: [id], onDelete: SetNull)
+  store                Store?              @relation(fields: [storeId], references: [id], onDelete: SetNull)
+  preference           CustomerPreference? @relation(fields: [preferenceId], references: [id], onDelete: SetNull)
+  bundles              Bundle[]
+
+  @@index([storeId, createdAt])
+  @@index([status, createdAt])
+}
+
+model Bundle {
+  id                   String            @id @default(cuid())
+  optimizationRunId    String
+  userId               String?
+  storeId              String
+  pickupWindowId       String?
+  status               ReservationStatus @default(PENDING)
+  mealCount            Int
+  servings             Int
+  totalCents           Int
+  originalTotalCents   Int
+  savingsCents         Int
+  verifiedSurplusUnits Int               @default(0)
+  explanation          String
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @updatedAt
+  optimizationRun      OptimizationRun   @relation(fields: [optimizationRunId], references: [id], onDelete: Restrict)
+  user                 User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
+  store                Store             @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  pickupWindow         PickupWindow?     @relation(fields: [pickupWindowId], references: [id], onDelete: SetNull)
+  items                BundleItem[]
+  meals                BundleMeal[]
+  reservation          Reservation?
+
+  @@index([storeId, createdAt])
+  @@index([status])
+}
+
+model BundleItem {
+  id                   String       @id @default(cuid())
+  bundleId             String
+  inventoryLotId       String
+  quantity             Int
+  unitPriceCents       Int
+  originalUnitPriceCents Int
+  bundle               Bundle       @relation(fields: [bundleId], references: [id], onDelete: Cascade)
+  inventoryLot         InventoryLot @relation(fields: [inventoryLotId], references: [id], onDelete: Restrict)
+
+  @@unique([bundleId, inventoryLotId])
+  @@index([inventoryLotId])
+}
+
+model BundleMeal {
+  id                   String          @id @default(cuid())
+  bundleId             String
+  recipeTemplateId     String?
+  title                String
+  servings             Int
+  itemNames            String[]        @default([])
+  pantryStaples        String[]        @default([])
+  instructions         Json
+  bundle               Bundle          @relation(fields: [bundleId], references: [id], onDelete: Cascade)
+  recipeTemplate       RecipeTemplate? @relation(fields: [recipeTemplateId], references: [id], onDelete: SetNull)
+
+  @@index([bundleId])
+  @@index([recipeTemplateId])
+}
+
+model Reservation {
+  id                   String             @id @default(cuid())
+  idempotencyKey       String?            @unique
+  bundleId             String             @unique
+  userId               String?
+  storeId              String
+  pickupWindowId       String
+  status               ReservationStatus @default(PENDING)
+  expiresAt            DateTime
+  reservedAt           DateTime?
+  paymentApprovedAt    DateTime?
+  paidAt               DateTime?
+  cancelledAt          DateTime?
+  releasedAt           DateTime?
+  failureCode          String?
+  failureSummary       String?
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+  bundle               Bundle             @relation(fields: [bundleId], references: [id], onDelete: Restrict)
+  user                 User?              @relation(fields: [userId], references: [id], onDelete: SetNull)
+  store                Store              @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  pickupWindow         PickupWindow        @relation(fields: [pickupWindowId], references: [id], onDelete: Restrict)
+  items                ReservationItem[]
+  order                Order?
+
+  @@index([status, expiresAt])
+  @@index([storeId, createdAt])
+  @@index([pickupWindowId, status])
+}
+
+model ReservationItem {
+  id                   String       @id @default(cuid())
+  reservationId        String
+  inventoryLotId       String
+  quantity             Int
+  unitPriceCents       Int
+  originalUnitPriceCents Int
+  reservation          Reservation  @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+  inventoryLot         InventoryLot @relation(fields: [inventoryLotId], references: [id], onDelete: Restrict)
+
+  @@unique([reservationId, inventoryLotId])
+  @@index([inventoryLotId])
+}
+
+model Order {
+  id                   String       @id @default(cuid())
+  reservationId        String       @unique
+  userId               String?
+  storeId              String
+  pickupWindowId       String
+  status               OrderStatus  @default(PENDING)
+  paymentStatus        PaymentStatus @default(CREATED)
+  currency             String       @default("USD")
+  amountCents          Int
+  paypalOrderId        String?      @unique
+  paypalCaptureId      String?      @unique
+  createRequestId      String?      @unique
+  captureRequestId     String?      @unique
+  paidAt               DateTime?
+  fulfilledAt          DateTime?
+  lastReconciledAt     DateTime?
+  paymentErrorCode     String?
+  paymentErrorSummary  String?
+  createdAt            DateTime     @default(now())
+  updatedAt            DateTime     @updatedAt
+  reservation          Reservation  @relation(fields: [reservationId], references: [id], onDelete: Restrict)
+  user                 User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+  store                Store        @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  pickupWindow         PickupWindow @relation(fields: [pickupWindowId], references: [id], onDelete: Restrict)
+  items                OrderItem[]
+  transactions         PaypalTransaction[]
+  webhookEvents        WebhookEvent[]
+  impactMetric         ImpactMetric?
+
+  @@index([status, createdAt])
+  @@index([storeId, status, createdAt])
+  @@index([paymentStatus, lastReconciledAt])
+}
+
+model OrderItem {
+  id                   String       @id @default(cuid())
+  orderId              String
+  inventoryLotId       String
+  productNameSnapshot  String
+  skuSnapshot          String
+  quantity             Int
+  unitPriceCents       Int
+  originalUnitPriceCents Int
+  order                Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  inventoryLot         InventoryLot @relation(fields: [inventoryLotId], references: [id], onDelete: Restrict)
+
+  @@unique([orderId, inventoryLotId])
+  @@index([inventoryLotId])
+}
+
+model PaypalTransaction {
+  id                   String                 @id @default(cuid())
+  orderId              String
+  type                 PaymentTransactionType
+  providerTransactionId String                @unique
+  requestId            String?                @unique
+  status               PaymentStatus
+  amountCents          Int?
+  currency             String?
+  responsePayload      Json?
+  createdAt            DateTime               @default(now())
+  order                Order                  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId, createdAt])
+  @@index([status, createdAt])
+}
+
+model WebhookEvent {
+  id                   String                 @id @default(cuid())
+  eventId              String                 @unique
+  eventType            String
+  orderId              String?
+  providerResourceId   String?
+  verified             Boolean                @default(false)
+  status               WebhookProcessingStatus @default(RECEIVED)
+  payload              Json
+  attemptCount         Int                    @default(0)
+  failureSummary       String?
+  receivedAt           DateTime               @default(now())
+  lastAttemptAt        DateTime?
+  processedAt          DateTime?
+  order                Order?                 @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  @@index([status, receivedAt])
+  @@index([orderId])
+  @@index([providerResourceId])
+}
+
+model AuditEvent {
+  id                   String         @id @default(cuid())
+  actorUserId          String?
+  actorType            AuditActorType @default(SYSTEM)
+  action               String
+  entityType           String
+  entityId             String
+  requestId            String?
+  metadata             Json?
+  createdAt            DateTime       @default(now())
+  actor                 User?          @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId, createdAt])
+  @@index([actorUserId, createdAt])
+  @@index([action, createdAt])
+}
+
+model ImpactMetric {
+  id                    String   @id @default(cuid())
+  orderId               String   @unique
+  storeId               String
+  surplusUnitsPurchased Int
+  originalValueCents    Int
+  paidValueCents        Int
+  savingsCents          Int
+  estimatedWeightGrams Int?
+  methodologyVersion   String
+  isEstimate            Boolean  @default(true)
+  recordedAt            DateTime @default(now())
+  order                 Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  store                 Store    @relation(fields: [storeId], references: [id], onDelete: Restrict)
+
+  @@index([storeId, recordedAt])
+}
