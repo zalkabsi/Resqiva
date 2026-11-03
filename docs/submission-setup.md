@@ -1,6 +1,6 @@
 # Submission setup
 
-**Status:** Materials are being prepared locally only. No public repository update, deployment, video upload, or Devpost submission has been made.
+**Status:** Materials are prepared locally. The user authorized pushing the finished source; no push has been made yet. No deployment, video upload, or Devpost submission has been made.
 
 ## Official requirements checked November 3, 2026
 
@@ -8,7 +8,8 @@
 - Submit a public repository containing source, assets, full setup/run instructions, and an OSI-approved open-source license.
 - Provide a functional demo, either hosted or runnable by judges from complete setup instructions. Public hosting is optional under the rules.
 - Provide a public YouTube video under three minutes showing the actual application.
-- Judges must have free, unrestricted access through the judging period (December 1–15, 2026). A key-requiring local setup alone does not yet meet that need for Resqiva.
+- Judges must have free, unrestricted access from December 1, 2026 at 2:00 p.m. through December 15, 2026 at 8:00 a.m. Pacific. A key-requiring local setup alone does not yet meet that need for Resqiva.
+- The open-source license must be detectable in the public repository's About section.
 - Explain the meaningful PayPal Developer Platform and AI use, provide requested test account details through an appropriate secure method, and address the judging criteria.
 
 Sources: [Official rules](https://paypalaihackathon.devpost.com/rules), [overview](https://paypalaihackathon.devpost.com/), and [FAQ](https://paypalaihackathon.devpost.com/details/faqs). Recheck them before submission.
@@ -19,7 +20,7 @@ See [submission-package.md](submission-package.md) for draft title, pitch, proje
 
 ## Current submission links
 
-- **Repository:** `https://github.com/zalkabsi/Resqiva` is the intended existing slug. It was empty during the initial check. Local source and an MIT license now exist, but no source has been pushed; do not present the URL as a populated public repository yet.
+- **Repository:** `https://github.com/zalkabsi/Resqiva` is the intended slug. It was empty during the initial check. Local source and an MIT license now exist; push is authorized and pending. Verify the repository is public and the license appears in its About area after push.
 - **Hosted demo:** None. Render remains a proposal only.
 - **Video:** None recorded or uploaded.
 - **Testing evidence:** [`testing.md`](testing.md).
@@ -32,4 +33,4 @@ Local instructions are reproducible and Docker-based. A working plan requires a 
 
 ## Publication gate
 
-The owner has not authorized pushing the repository, deploying publicly, uploading a video, or submitting to Devpost. Keep these materials local until explicit approval. Do not put API keys, PayPal secrets, buyer passwords, tokens, or webhook secrets in public files or submission text.
+The owner authorized pushing the repository. Public deployment, uploading a video, and submitting to Devpost still need separate explicit approval. Do not put API keys, PayPal secrets, buyer passwords, tokens, or webhook secrets in public files or submission text.

@@ -6,6 +6,9 @@ import { getPayPalOrder } from "@/lib/paypal";
 
 const RESERVATION_MINUTES = 20;
 const SERIALIZATION_RETRIES = 3;
+// The capture route has a 30 second maximum duration. Keep an in-flight claim
+// held substantially longer before treating it as abandoned after a crash.
+const CAPTURE_IN_PROGRESS_LEASE_MS = 2 * 60_000;
 
 export class ReservationError extends Error {
   constructor(
@@ -27,6 +30,7 @@ export class ReservationError extends Error {
 }
 
 export type ReservationReleaseResult = "released" | "already_final" | "not_releasable";
+export type CaptureClaimResult = "claimed" | "not_found" | "not_releasable";
 
 /**
  * Reserve the exact bundle rows saved by the optimizer. Price, quantities,
@@ -176,6 +180,7 @@ export async function releaseReservation(
   reservationId: string,
   terminalStatus: "CANCELLED" | "EXPIRED",
   actorUserId?: string,
+  actorType?: "CUSTOMER" | "MERCHANT",
 ): Promise<ReservationReleaseResult> {
   const db = getDb();
   const current = await db.reservation.findUnique({
@@ -186,31 +191,58 @@ export async function releaseReservation(
   if (current.status === terminalStatus || current.status === "CANCELLED" || current.status === "EXPIRED") {
     return "already_final";
   }
-  if (current.status !== "RESERVED") return "not_releasable";
+  const isUnapprovedReservation = current.status === "RESERVED";
+  const isApprovedReservation = current.status === "PAYMENT_APPROVED";
+  const isRecoverableException = current.status === "PAYMENT_EXCEPTION"
+    && ["CAPTURE_UNCERTAIN", "DATABASE_FINALIZATION_UNCERTAIN", "CAPTURE_DENIED"].includes(current.failureCode ?? "");
+  if (!isUnapprovedReservation && !isApprovedReservation && !isRecoverableException) return "not_releasable";
 
+  const hasCaptureInProgress = isApprovedReservation
+    && current.order?.paymentErrorCode === "CAPTURE_IN_PROGRESS";
+  const staleCaptureInProgress = hasCaptureInProgress && isStaleCaptureInProgress(current.order);
+  // A recent marker may belong to a still-running capture request. An old
+  // marker is recoverable only after PayPal independently reports VOIDED.
+  if (hasCaptureInProgress && !staleCaptureInProgress) return "not_releasable";
+
+  let verifiedProviderStatus: string | null = null;
+  if ((isApprovedReservation || isRecoverableException) && !current.order?.paypalOrderId) return "not_releasable";
+  if (isRecoverableException && (
+    !current.order
+    || current.order.status !== "PAYMENT_EXCEPTION"
+    || current.order.paymentStatus !== expectedExceptionPaymentStatus(current.failureCode)
+    || current.order.paymentErrorCode !== current.failureCode
+  )) return "not_releasable";
   if (current.order?.paypalOrderId) {
     try {
       const remote = await getPayPalOrder(current.order.paypalOrderId);
+      verifiedProviderStatus = remote.status;
       // Only an unapproved CREATED or definitively VOIDED provider order is
-      // safe to release. Unknown and approved states keep inventory held.
-      if (remote.status !== "CREATED" && remote.status !== "VOIDED") return "not_releasable";
+      // safe to release. For an approved local order, require a fresh VOIDED
+      // status from PayPal. APPROVED and every other state remain held.
+      if (isApprovedReservation || isRecoverableException) {
+        if (remote.status !== "VOIDED") return "not_releasable";
+      } else if (remote.status !== "CREATED" && remote.status !== "VOIDED") {
+        return "not_releasable";
+      }
     } catch {
       // A timeout or invalid credential cannot prove that a capture did not complete.
       return "not_releasable";
     }
   }
-  if (current.order && (
-    current.order.paymentStatus === "CAPTURED"
-    || current.order.paymentStatus === "APPROVED"
-    || current.order.status === "PAID"
-    || current.order.status === "PAYMENT_APPROVED"
+  if (isUnapprovedReservation && current.order && (
+    current.order.status !== "PENDING"
+    || (current.order.paymentStatus !== "CREATED" && current.order.paymentStatus !== "FAILED")
   )) {
     return "not_releasable";
   }
-  if (current.order?.status === "PAYMENT_EXCEPTION" || current.order?.paymentStatus === "UNKNOWN") {
+  if (isApprovedReservation && (
+    !current.order
+    || current.order.status !== "PAYMENT_APPROVED"
+    || current.order.paymentStatus !== "APPROVED"
+    || (current.order.paymentErrorCode === "CAPTURE_IN_PROGRESS" && !staleCaptureInProgress)
+  )) {
     return "not_releasable";
   }
-
   try {
     return await withSerializableRetry(async () => db.$transaction(async (tx) => {
       const reservation = await tx.reservation.findUnique({
@@ -221,15 +253,77 @@ export async function releaseReservation(
       if (reservation.status === terminalStatus || reservation.status === "CANCELLED" || reservation.status === "EXPIRED") {
         return "already_final" as const;
       }
-      if (reservation.status !== "RESERVED") return "not_releasable" as const;
-      if (reservation.order && (
-        reservation.order.status === "PAID"
-        || reservation.order.status === "PAYMENT_APPROVED"
-        || reservation.order.status === "PAYMENT_EXCEPTION"
-        || reservation.order.paymentStatus === "CAPTURED"
-        || reservation.order.paymentStatus === "APPROVED"
-        || reservation.order.paymentStatus === "UNKNOWN"
+      if (reservation.status !== current.status) return "not_releasable" as const;
+      // The provider status was read before this transaction. If order creation
+      // or another payment transition changed the order since then, require a
+      // fresh attempt instead of releasing stock against stale provider state.
+      if ((current.order?.id ?? null) !== (reservation.order?.id ?? null)) return "not_releasable" as const;
+      if (current.order && (
+        reservation.order?.paypalOrderId !== current.order.paypalOrderId
+        || reservation.order.status !== current.order.status
+        || reservation.order.paymentStatus !== current.order.paymentStatus
+        || reservation.order.paymentErrorCode !== current.order.paymentErrorCode
+        || (current.order.paymentErrorCode === "CAPTURE_IN_PROGRESS"
+          && !sameTimestamp(reservation.order?.updatedAt, current.order.updatedAt))
       )) return "not_releasable" as const;
+      if (reservation.status === "RESERVED" && reservation.order && (
+        reservation.order.status !== "PENDING"
+        || (reservation.order.paymentStatus !== "CREATED" && reservation.order.paymentStatus !== "FAILED")
+      )) return "not_releasable" as const;
+      if (reservation.status === "PAYMENT_APPROVED" && (
+        !reservation.order
+        || !reservation.order.paypalOrderId
+        || reservation.order.status !== "PAYMENT_APPROVED"
+        || reservation.order.paymentStatus !== "APPROVED"
+        || (reservation.order.paymentErrorCode === "CAPTURE_IN_PROGRESS"
+          && !isStaleCaptureInProgress(reservation.order))
+        || verifiedProviderStatus !== "VOIDED"
+      )) return "not_releasable" as const;
+      if (reservation.status === "PAYMENT_EXCEPTION" && (
+        !["CAPTURE_UNCERTAIN", "DATABASE_FINALIZATION_UNCERTAIN", "CAPTURE_DENIED"].includes(reservation.failureCode ?? "")
+        || !reservation.order
+        || !reservation.order.paypalOrderId
+        || reservation.order.status !== "PAYMENT_EXCEPTION"
+        || reservation.order.paymentStatus !== expectedExceptionPaymentStatus(reservation.failureCode)
+        || reservation.order.paymentErrorCode !== reservation.failureCode
+        || reservation.failureCode !== current.failureCode
+        || verifiedProviderStatus !== "VOIDED"
+      )) return "not_releasable" as const;
+
+      const now = new Date();
+      const reservationClaim = await tx.reservation.updateMany({
+        where: {
+          id: reservation.id,
+          status: reservation.status,
+          ...(reservation.status === "PAYMENT_EXCEPTION" ? { failureCode: current.failureCode } : {}),
+          ...(terminalStatus === "EXPIRED" ? { expiresAt: { lte: now } } : {}),
+        },
+        data: {
+          status: terminalStatus,
+          cancelledAt: terminalStatus === "CANCELLED" ? now : undefined,
+          releasedAt: now,
+        },
+      });
+      if (reservationClaim.count !== 1) return "not_releasable" as const;
+
+      if (reservation.order) {
+        const orderClaim = await tx.order.updateMany({
+          where: {
+            id: reservation.order.id,
+            status: reservation.status === "RESERVED" ? "PENDING" : reservation.order.status,
+            paymentStatus: reservation.status === "RESERVED"
+              ? { in: ["CREATED", "FAILED"] }
+              : reservation.order.paymentStatus,
+            paypalOrderId: reservation.order.paypalOrderId,
+            paymentErrorCode: reservation.order.paymentErrorCode,
+            ...(current.order?.paymentErrorCode === "CAPTURE_IN_PROGRESS"
+              ? { updatedAt: current.order.updatedAt }
+              : {}),
+          },
+          data: { status: terminalStatus, paymentStatus: "FAILED" },
+        });
+        if (orderClaim.count !== 1) throw new ReservationTransitionRaceError();
+      }
 
       const totalUnits = reservation.items.reduce((sum, item) => sum + item.quantity, 0);
       for (const item of reservation.items) {
@@ -245,25 +339,11 @@ export async function releaseReservation(
       });
       if (pickup.count !== 1) throw new Error("Reservation pickup capacity accounting is inconsistent.");
 
-      await tx.reservation.update({
-        where: { id: reservation.id },
-        data: {
-          status: terminalStatus,
-          cancelledAt: terminalStatus === "CANCELLED" ? new Date() : undefined,
-          releasedAt: new Date(),
-        },
-      });
       await tx.bundle.update({ where: { id: reservation.bundleId }, data: { status: terminalStatus } });
-      if (reservation.order && reservation.order.status === "PENDING") {
-        await tx.order.update({
-          where: { id: reservation.order.id },
-          data: { status: terminalStatus, paymentStatus: "FAILED" },
-        });
-      }
       await tx.auditEvent.create({
         data: {
           actorUserId: actorUserId ?? null,
-          actorType: actorUserId ? "CUSTOMER" : "SYSTEM",
+          actorType: actorType ?? (actorUserId ? "CUSTOMER" : "SYSTEM"),
           action: terminalStatus === "CANCELLED" ? "RESERVATION_CANCELLED" : "RESERVATION_EXPIRED",
           entityType: "Reservation",
           entityId: reservation.id,
@@ -274,10 +354,117 @@ export async function releaseReservation(
       return "released" as const;
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }));
   } catch (error) {
+    if (error instanceof ReservationTransitionRaceError) return "not_releasable";
     if (isSerializationConflict(error)) return "not_releasable";
     throw error;
   }
 }
+
+function expectedExceptionPaymentStatus(failureCode: string | null): "DECLINED" | "UNKNOWN" {
+  // PayPal's PAYMENT.CAPTURE.DENIED webhook records DECLINED; uncertain
+  // network/finalization outcomes retain UNKNOWN.
+  return failureCode === "CAPTURE_DENIED" ? "DECLINED" : "UNKNOWN";
+}
+
+function isStaleCaptureInProgress(order: { updatedAt?: Date | null } | null | undefined): boolean {
+  const updatedAt = order?.updatedAt;
+  return updatedAt instanceof Date
+    && Number.isFinite(updatedAt.getTime())
+    && Date.now() - updatedAt.getTime() >= CAPTURE_IN_PROGRESS_LEASE_MS;
+}
+
+function sameTimestamp(left: Date | null | undefined, right: Date | null | undefined): boolean {
+  return left instanceof Date && right instanceof Date && left.getTime() === right.getTime();
+}
+
+/**
+ * Claim an active reservation for capture before making the external PayPal
+ * request. The conditional state transition serializes against cancellation:
+ * if cancellation commits first, this function cannot move it back to an
+ * approvable state. Repeated capture requests may share the same approved
+ * claim and PayPal request idempotency key.
+ */
+export async function claimReservationForCapture(
+  orderId: string,
+  reservationId: string,
+): Promise<CaptureClaimResult> {
+  const db = getDb();
+  try {
+    return await withSerializableRetry(async () => db.$transaction(async (tx) => {
+      const order = await tx.order.findUnique({
+        where: { id: orderId },
+        include: { reservation: true },
+      });
+      if (!order || order.reservationId !== reservationId) return "not_found" as const;
+
+      const reservation = order.reservation;
+      const alreadyApproved = reservation.status === "PAYMENT_APPROVED"
+        && order.status === "PAYMENT_APPROVED"
+        && order.paymentStatus === "APPROVED";
+      if (alreadyApproved && order.paymentErrorCode === "CAPTURE_IN_PROGRESS") {
+        // Duplicate capture requests share the current in-flight attempt. Its
+        // marker also prevents a concurrent VOIDED-order cancellation from
+        // releasing stock while the provider request is outstanding.
+        return "claimed" as const;
+      }
+
+      const retryableApproved = alreadyApproved && order.paymentErrorCode !== "CAPTURE_IN_PROGRESS";
+      const activeReservation = reservation.status === "RESERVED" && reservation.expiresAt > new Date();
+      const retryableException = reservation.status === "PAYMENT_EXCEPTION"
+        && ["CAPTURE_UNCERTAIN", "DATABASE_FINALIZATION_UNCERTAIN"].includes(reservation.failureCode ?? "");
+      if (!activeReservation && !retryableException && !retryableApproved) return "not_releasable" as const;
+      if (
+        (activeReservation && !["PENDING", "PAYMENT_APPROVED"].includes(order.status))
+        || (retryableException && order.status !== "PAYMENT_EXCEPTION")
+        || (retryableApproved && (order.status !== "PAYMENT_APPROVED" || order.paymentStatus !== "APPROVED"))
+      ) return "not_releasable" as const;
+
+      const now = new Date();
+      const reservationClaim = await tx.reservation.updateMany({
+        where: {
+          id: reservation.id,
+          status: reservation.status,
+          ...(activeReservation
+            ? { expiresAt: { gt: now } }
+            : retryableException
+              ? { failureCode: { in: ["CAPTURE_UNCERTAIN", "DATABASE_FINALIZATION_UNCERTAIN"] } }
+              : {}),
+        },
+        data: {
+          status: "PAYMENT_APPROVED",
+          paymentApprovedAt: reservation.paymentApprovedAt ?? now,
+          failureCode: null,
+          failureSummary: null,
+        },
+      });
+      if (reservationClaim.count !== 1) throw new ReservationTransitionRaceError();
+
+      const captureRequestId = order.captureRequestId ?? `resqiva-capture-${order.id}`;
+      const orderClaim = await tx.order.updateMany({
+        where: {
+          id: order.id,
+          status: order.status,
+          paymentStatus: order.paymentStatus,
+          paymentErrorCode: order.paymentErrorCode,
+        },
+        data: {
+          status: "PAYMENT_APPROVED",
+          paymentStatus: "APPROVED",
+          captureRequestId,
+          paymentErrorCode: "CAPTURE_IN_PROGRESS",
+          paymentErrorSummary: null,
+        },
+      });
+      if (orderClaim.count !== 1) throw new ReservationTransitionRaceError();
+      return "claimed" as const;
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }));
+  } catch (error) {
+    if (error instanceof ReservationTransitionRaceError || isSerializationConflict(error)) return "not_releasable";
+    throw error;
+  }
+}
+
+class ReservationTransitionRaceError extends Error {}
 
 /** Expire stale unapproved reservations before creating new plans or holds. */
 export async function expireStaleReservations(): Promise<void> {

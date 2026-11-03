@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { PayPalButtons, PayPalScriptProvider } from "@paypal/react-paypal-js";
 import type { PlannedBundle, PlannerPreferences } from "@/lib/contracts";
+import { quantityOnHandFromAvailable } from "@/lib/quantity-on-hand";
 
 type Store = {
   id: string;
@@ -39,6 +40,8 @@ type InventoryRow = {
   lotId?: string;
   name: string;
   quantityAvailable: number;
+  quantityReserved?: number;
+  quantitySold?: number;
   priceCents: number;
   originalPriceCents: number;
   expiresAt?: string | null;
@@ -54,9 +57,48 @@ type MerchantPayload = {
   };
 };
 
+type PickupWindow = {
+  id: string;
+  storeId: string;
+  storeName?: string;
+  timezone?: string;
+  startsAt: string;
+  endsAt: string;
+  lastReservationAt: string;
+  capacityUnits: number;
+  reservedUnits: number;
+  active: boolean;
+};
+
+type PickupWindowDraft = Pick<PickupWindow, "startsAt" | "endsAt" | "lastReservationAt" | "capacityUnits">;
+
+type MerchantStore = {
+  id: string;
+  name: string;
+  city: string;
+  timezone: string;
+  pickupAddress: string;
+  isDemo?: boolean;
+  inventoryListings?: number;
+  pickupWindowCount?: number;
+  orderCount?: number;
+  updatedAt?: string;
+};
+
+type MerchantStoreDraft = Pick<MerchantStore, "name" | "city" | "timezone" | "pickupAddress">;
+
 type ActiveCheckout = {
   bundle: PlannedBundle;
   reservationId: string | null;
+};
+
+type ReservationReconcileResult = {
+  status: string;
+  paymentStatus?: string;
+  held?: boolean;
+  released?: boolean;
+  orderId?: string;
+  pickupReference?: string;
 };
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
@@ -107,6 +149,85 @@ function timeLabel(value?: string | null) {
   if (!value) return "Pickup window shown after planning";
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit" }).format(date);
+}
+
+function formatAtTimeZone(value: Date, timeZone: string) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(value);
+  const part = (name: string) => parts.find((item) => item.type === name)?.value ?? "";
+  return `${part("year")}-${part("month")}-${part("day")}T${part("hour")}:${part("minute")}`;
+}
+
+function toDateTimeInput(value: string, timeZone?: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  if (timeZone) {
+    try {
+      return formatAtTimeZone(date, timeZone);
+    } catch {
+      // Fall through to the browser timezone if a store timezone is unavailable.
+    }
+  }
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
+}
+
+function fromDateTimeInput(value: string, timeZone?: string) {
+  if (timeZone) {
+    const [datePart, timePart] = value.split("T");
+    const [year, month, day] = (datePart ?? "").split("-").map(Number);
+    const [hour, minute] = (timePart ?? "").split(":").map(Number);
+    if (![year, month, day, hour, minute].every(Number.isFinite)) throw new Error("Enter a valid pickup date and time.");
+    const wallClock = Date.UTC(year, month - 1, day, hour, minute);
+    let candidate = wallClock;
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      const formatted = new Intl.DateTimeFormat("en-US", {
+        timeZone,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        hourCycle: "h23",
+      }).formatToParts(new Date(candidate));
+      const part = (name: string) => Number(formatted.find((item) => item.type === name)?.value);
+      const representedWallClock = Date.UTC(part("year"), part("month") - 1, part("day"), part("hour"), part("minute"));
+      const next = wallClock - (representedWallClock - candidate);
+      if (next === candidate) break;
+      candidate = next;
+    }
+    if (formatAtTimeZone(new Date(candidate), timeZone) !== value) {
+      throw new Error(`That local time does not exist in ${timeZone} because of a clock change.`);
+    }
+    return new Date(candidate).toISOString();
+  }
+  return new Date(value).toISOString();
+}
+
+function dateLabelInTimeZone(value: string, timeZone?: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  try {
+    return new Intl.DateTimeFormat("en-US", { timeZone, weekday: "short", month: "short", day: "numeric" }).format(date);
+  } catch {
+    return dateLabel(value);
+  }
+}
+
+function timeLabelInTimeZone(value: string, timeZone?: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  try {
+    return new Intl.DateTimeFormat("en-US", { timeZone, hour: "numeric", minute: "2-digit" }).format(date);
+  } catch {
+    return timeLabel(value);
+  }
 }
 
 function Icon({ name, size = 20 }: { name: "leaf" | "arrow" | "bag" | "pin" | "clock" | "spark" | "chevron" | "check" | "grid" | "shop" | "close" | "plate"; size?: number }) {
@@ -162,9 +283,13 @@ function CheckoutPanel({
   configError,
   busy,
   uncertain,
+  reconcileBusy,
+  reconcileError,
+  reconcileResult,
   onCreateOrder,
   onApprove,
   onCancel,
+  onReconcile,
   onError,
   onClose,
   onReserve,
@@ -175,9 +300,13 @@ function CheckoutPanel({
   configError: string;
   busy: boolean;
   uncertain: boolean;
+  reconcileBusy: boolean;
+  reconcileError: string;
+  reconcileResult: ReservationReconcileResult | null;
   onCreateOrder: () => Promise<string>;
   onApprove: (paypalOrderId: string) => Promise<void>;
   onCancel: () => Promise<void>;
+  onReconcile: () => Promise<void>;
   onError: () => void;
   onClose: () => void;
   onReserve: (bundle: PlannedBundle) => void;
@@ -190,7 +319,17 @@ function CheckoutPanel({
       : configError ? <StatusNotice kind="error">{configError} No payment order was started. Configure the public PayPal Sandbox client ID, then retry.</StatusNotice>
         : !clientId ? <StatusNotice kind="error">PayPal Sandbox is not configured: the public client ID is missing. No reservation or payment order was created. Set <code>NEXT_PUBLIC_PAYPAL_CLIENT_ID</code> for the Sandbox app; the private client secret stays on the server.</StatusNotice>
           : !checkout.reservationId ? <StatusNotice kind="info">No stock has been reserved yet. Start a fresh reservation before continuing to PayPal. <button type="button" className="inline-link" onClick={() => onReserve(checkout.bundle)}>Reserve this meal set</button></StatusNotice>
-            : uncertain ? <StatusNotice kind="error">PayPal reported an error and the payment state may be uncertain. Inventory remains reserved for reconciliation; no cancellation was sent. Do not start another checkout.</StatusNotice>
+            : uncertain ? <div>
+              <StatusNotice kind="error">PayPal reported an error and the payment state may be uncertain. Inventory remains reserved; no cancellation was sent. Do not start another checkout.</StatusNotice>
+              {reconcileError && <div style={{ marginTop: 9 }}><StatusNotice kind="error">{reconcileError}</StatusNotice></div>}
+              {reconcileResult && <div style={{ marginTop: 9 }}>
+                {reconcileResult.status === "PAID" && <StatusNotice kind="success">Payment was confirmed and finalized. Opening your receipt{reconcileResult.pickupReference ? ` · pickup reference ${reconcileResult.pickupReference}` : ""}.</StatusNotice>}
+                {(reconcileResult.status === "CANCELLED" || reconcileResult.status === "EXPIRED") && reconcileResult.released === true && <StatusNotice kind="info">Reservation status {reconcileResult.status}; release confirmed. No payment was recorded.</StatusNotice>}
+                {!(reconcileResult.status === "PAID" || ((reconcileResult.status === "CANCELLED" || reconcileResult.status === "EXPIRED") && reconcileResult.released === true)) && <StatusNotice kind="info">PayPal status: {reconcileResult.status}{reconcileResult.paymentStatus ? ` · payment ${reconcileResult.paymentStatus}` : ""}. Inventory {reconcileResult.held === true ? "remains held" : "release has not been confirmed"}. Check again later; this checkout remains open.</StatusNotice>}
+              </div>}
+              <button className="small-action" type="button" disabled={busy || reconcileBusy || !checkout.reservationId} onClick={() => void onReconcile()} style={{ marginTop: 10 }}>{reconcileBusy ? "Checking payment status…" : "Check payment status"}</button>
+              {reconcileBusy && <p role="status" aria-live="polite" style={{ margin: "7px 0 0", color: "#617d4f", fontSize: 10 }}>Checking the saved reservation with PayPal Sandbox. Inventory stays held during the check.</p>}
+            </div>
               : <div className="panel-card" style={{ padding: 14, maxWidth: 380, margin: "0 auto" }}><PayPalScriptProvider options={{ clientId, currency: "USD", intent: "capture" }}><PayPalButtons
                 disabled={busy}
                 style={{ layout: "vertical", shape: "rect", label: "paypal", color: "gold", height: 42 }}
@@ -207,7 +346,7 @@ function StatusNotice({ kind, children, onDismiss }: { kind: "success" | "error"
   return <div className={`status-notice status-${kind}`} role={kind === "error" ? "alert" : "status"}><span className="notice-icon">{kind === "success" ? <Icon name="check" size={17} /> : kind === "error" ? <Icon name="close" size={17} /> : <Icon name="spark" size={17} />}</span><div>{children}</div>{onDismiss && <button className="notice-close" type="button" aria-label="Dismiss message" onClick={onDismiss}><Icon name="close" size={16} /></button>}</div>;
 }
 
-function InventoryEditor({ item, busy, onSave }: { item: InventoryRow; busy: boolean; onSave: (lotId: string, quantityAvailable: number, priceCents: number) => void }) {
+function InventoryEditor({ item, busy, onSave }: { item: InventoryRow; busy: boolean; onSave: (lotId: string, quantityAvailable: number, priceCents: number, quantityReserved: number, quantitySold: number) => void }) {
   const [quantity, setQuantity] = useState(item.quantityAvailable);
   const [price, setPrice] = useState(item.priceCents / 100);
   const [validationError, setValidationError] = useState("");
@@ -223,7 +362,7 @@ function InventoryEditor({ item, busy, onSave }: { item: InventoryRow; busy: boo
       return;
     }
     setValidationError("");
-    onSave(lotId, quantity, Math.round(price * 100));
+    onSave(lotId, quantity, Math.round(price * 100), item.quantityReserved ?? 0, item.quantitySold ?? 0);
   }
 
   return <tr key={`${lotId}-${item.quantityAvailable}-${item.priceCents}`}>
@@ -234,6 +373,181 @@ function InventoryEditor({ item, busy, onSave }: { item: InventoryRow; busy: boo
   </tr>;
 }
 
+function PickupWindowEditor({ window, saving, disabled, onSave }: { window: PickupWindow; saving: boolean; disabled: boolean; onSave: (id: string, values: Omit<PickupWindow, "id" | "storeId" | "storeName" | "reservedUnits">) => Promise<void> }) {
+  const [startsAt, setStartsAt] = useState(() => toDateTimeInput(window.startsAt, window.timezone));
+  const [endsAt, setEndsAt] = useState(() => toDateTimeInput(window.endsAt, window.timezone));
+  const [lastReservationAt, setLastReservationAt] = useState(() => toDateTimeInput(window.lastReservationAt, window.timezone));
+  const [capacityUnits, setCapacityUnits] = useState(window.capacityUnits);
+  const [active, setActive] = useState(window.active);
+  const [validationError, setValidationError] = useState("");
+  const remainingUnits = Math.max(0, window.capacityUnits - window.reservedUnits);
+  const inputStyle = { width: "100%", minHeight: 38, padding: "8px 9px", color: "#33483a", background: "#fff", border: "1px solid #d8dfd5", borderRadius: 5, fontSize: 11 };
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    let startsAtIso: string;
+    let endsAtIso: string;
+    let lastReservationAtIso: string;
+    try {
+      startsAtIso = fromDateTimeInput(startsAt, window.timezone);
+      endsAtIso = fromDateTimeInput(endsAt, window.timezone);
+      lastReservationAtIso = fromDateTimeInput(lastReservationAt, window.timezone);
+    } catch (err) {
+      setValidationError(err instanceof Error ? err.message : "Enter valid pickup times.");
+      return;
+    }
+    const startMs = new Date(startsAtIso).getTime();
+    const endMs = new Date(endsAtIso).getTime();
+    const lastMs = new Date(lastReservationAtIso).getTime();
+    if (startMs >= endMs) {
+      setValidationError("Pickup must end after it starts.");
+      return;
+    }
+    if (lastMs > startMs) {
+      setValidationError("The last reservation time must be at or before pickup starts.");
+      return;
+    }
+    if (!Number.isInteger(capacityUnits) || capacityUnits < 1) {
+      setValidationError("Capacity must be a whole number greater than zero.");
+      return;
+    }
+    if (capacityUnits < window.reservedUnits) {
+      setValidationError(`Capacity cannot be lower than the ${window.reservedUnits} units already reserved.`);
+      return;
+    }
+    setValidationError("");
+    await onSave(window.id, {
+      startsAt: startsAtIso,
+      endsAt: endsAtIso,
+      lastReservationAt: lastReservationAtIso,
+      capacityUnits,
+      active,
+    });
+  }
+
+  return <article className="panel-card" aria-busy={saving} style={{ padding: 16, marginBottom: 10, borderColor: window.active ? "#dce8d8" : "#e5e7e2" }}>
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", gap: 12, marginBottom: 13 }}>
+      <div><strong style={{ display: "block", color: "#344a3b", fontSize: 12 }}>{window.storeName ?? "Demo store"} pickup</strong><span style={{ display: "block", marginTop: 3, color: "#7a887d", fontSize: 9 }}>{dateLabelInTimeZone(window.startsAt, window.timezone)} · {timeLabelInTimeZone(window.startsAt, window.timezone)}–{timeLabelInTimeZone(window.endsAt, window.timezone)}{window.timezone ? ` · ${window.timezone}` : ""}</span></div>
+      <span className={`status-tag ${window.active ? "status-paid" : "status-expired"}`}>{window.active ? "Active" : "Inactive"}</span>
+    </div>
+    <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 14px", marginBottom: 14, color: "#657468", fontSize: 9 }}><span><strong>Capacity:</strong> {window.capacityUnits} units</span><span><strong>Reserved:</strong> {window.reservedUnits} units</span><span><strong>Available:</strong> {remainingUnits} units</span></div>
+    <form onSubmit={submit}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(155px, 1fr))", gap: 10 }}>
+        <label className="field-label">Pickup starts<input aria-label={`Pickup start for ${window.storeName ?? "demo store"}`} type="datetime-local" value={startsAt} onChange={(event) => setStartsAt(event.target.value)} style={inputStyle} required /></label>
+        <label className="field-label">Pickup ends<input aria-label={`Pickup end for ${window.storeName ?? "demo store"}`} type="datetime-local" value={endsAt} onChange={(event) => setEndsAt(event.target.value)} style={inputStyle} required /></label>
+        <label className="field-label">Last reservation time<input aria-label={`Last reservation time for ${window.storeName ?? "demo store"}`} type="datetime-local" value={lastReservationAt} onChange={(event) => setLastReservationAt(event.target.value)} style={inputStyle} required /></label>
+        <label className="field-label">Capacity (inventory units)<input aria-label={`Capacity in inventory units for ${window.storeName ?? "demo store"}`} type="number" min={Math.max(1, window.reservedUnits)} step="1" value={capacityUnits} onChange={(event) => setCapacityUnits(Number(event.target.value))} style={inputStyle} required /></label>
+      </div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", marginTop: 12 }}>
+        <label style={{ display: "inline-flex", alignItems: "center", gap: 7, color: "#536458", fontSize: 10, fontWeight: 650 }}><input type="checkbox" checked={active} onChange={(event) => setActive(event.target.checked)} aria-label={`Pickup window active for ${window.storeName ?? "demo store"}`} /> Accept reservations for this window</label>
+        <button className="small-action" type="submit" disabled={disabled || saving}>{saving ? "Saving window…" : "Save pickup window"}</button>
+      </div>
+      {validationError && <p role="alert" style={{ color: "#a34c3e", margin: "8px 0 0", fontSize: 9 }}>{validationError}</p>}
+      {saving && <p role="status" aria-live="polite" style={{ color: "#617d4f", margin: "8px 0 0", fontSize: 9 }}>Saving pickup window to the server…</p>}
+    </form>
+  </article>;
+}
+
+function CreatePickupWindowForm({ store, existingWindows, saving, disabled, onCreate, onCancel }: { store: MerchantStore; existingWindows: PickupWindow[]; saving: boolean; disabled: boolean; onCreate: (storeId: string, values: PickupWindowDraft) => Promise<void>; onCancel: () => void }) {
+  const [startsAt, setStartsAt] = useState("");
+  const [endsAt, setEndsAt] = useState("");
+  const [lastReservationAt, setLastReservationAt] = useState("");
+  const [capacityUnits, setCapacityUnits] = useState(1);
+  const [validationError, setValidationError] = useState("");
+  const inputStyle = { width: "100%", minHeight: 38, padding: "8px 9px", color: "#33483a", background: "#fff", border: "1px solid #d8dfd5", borderRadius: 5, fontSize: 11 };
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    let startsAtIso: string;
+    let endsAtIso: string;
+    let lastReservationAtIso: string;
+    try {
+      startsAtIso = fromDateTimeInput(startsAt, store.timezone);
+      endsAtIso = fromDateTimeInput(endsAt, store.timezone);
+      lastReservationAtIso = fromDateTimeInput(lastReservationAt, store.timezone);
+    } catch (err) {
+      setValidationError(err instanceof Error ? err.message : "Enter valid pickup times in the store timezone.");
+      return;
+    }
+    const startMs = Date.parse(startsAtIso);
+    const endMs = Date.parse(endsAtIso);
+    const cutoffMs = Date.parse(lastReservationAtIso);
+    const now = Date.now();
+    if (startMs <= now) return setValidationError("Pickup must start in the future.");
+    if (endMs <= startMs) return setValidationError("Pickup must end after it starts.");
+    if (cutoffMs <= now) return setValidationError("The reservation cutoff must be in the future.");
+    if (cutoffMs > startMs) return setValidationError("The reservation cutoff cannot be later than pickup start.");
+    if (!Number.isInteger(capacityUnits) || capacityUnits < 1 || capacityUnits > 10_000) return setValidationError("Capacity must be a whole number from 1 to 10,000.");
+    const overlaps = existingWindows.some((window) => window.storeId === store.id && window.active
+      && startMs < Date.parse(window.endsAt) && endMs > Date.parse(window.startsAt));
+    if (overlaps) return setValidationError("This time overlaps another active pickup window at this store.");
+    setValidationError("");
+    await onCreate(store.id, { startsAt: startsAtIso, endsAt: endsAtIso, lastReservationAt: lastReservationAtIso, capacityUnits });
+  }
+
+  return <form onSubmit={(event) => void submit(event)} aria-busy={saving} style={{ padding: 13, background: "#fbfcf8", border: "1px solid #e2e9df", borderRadius: 7, marginTop: 10 }}>
+    <fieldset disabled={disabled || saving} style={{ border: 0, padding: 0, margin: 0 }}>
+      <legend className="eyebrow" style={{ marginBottom: 5 }}>New pickup window · {store.name}</legend>
+      <p style={{ margin: "0 0 10px", color: "#728076", fontSize: 9 }}>Times use {store.timezone}. Resqiva converts them to explicit-offset ISO timestamps for the server.</p>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(155px, 1fr))", gap: 9 }}>
+        <label className="field-label">Pickup starts<input aria-label={`New pickup start for ${store.name}`} type="datetime-local" value={startsAt} onChange={(event) => setStartsAt(event.target.value)} style={inputStyle} required /></label>
+        <label className="field-label">Pickup ends<input aria-label={`New pickup end for ${store.name}`} type="datetime-local" value={endsAt} onChange={(event) => setEndsAt(event.target.value)} style={inputStyle} required /></label>
+        <label className="field-label">Last reservation time<input aria-label={`New reservation cutoff for ${store.name}`} type="datetime-local" value={lastReservationAt} onChange={(event) => setLastReservationAt(event.target.value)} style={inputStyle} required /></label>
+        <label className="field-label">Capacity (inventory units)<input aria-label={`New pickup capacity for ${store.name}`} type="number" min="1" max="10000" step="1" value={capacityUnits} onChange={(event) => setCapacityUnits(Number(event.target.value))} style={inputStyle} required /></label>
+      </div>
+      {validationError && <p role="alert" style={{ color: "#a34c3e", margin: "8px 0 0", fontSize: 9 }}>{validationError}</p>}
+      {saving && <p role="status" aria-live="polite" style={{ color: "#617d4f", margin: "8px 0 0", fontSize: 9 }}>Creating pickup window on the server…</p>}
+      <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", flexWrap: "wrap", marginTop: 10 }}>
+        <button className="quiet-button" type="button" onClick={onCancel}>Cancel</button>
+        <button className="small-action" type="submit" disabled={disabled || saving}>{saving ? "Creating window…" : "Create pickup window"}</button>
+      </div>
+    </fieldset>
+  </form>;
+}
+
+function MerchantStoreForm({ store, saving, disabled, onSave, onCancel }: { store?: MerchantStore; saving: boolean; disabled: boolean; onSave: (values: MerchantStoreDraft) => Promise<void>; onCancel?: () => void }) {
+  const [name, setName] = useState(store?.name ?? "");
+  const [city, setCity] = useState(store?.city ?? "");
+  const [timezone, setTimezone] = useState(store?.timezone ?? "");
+  const [pickupAddress, setPickupAddress] = useState(store?.pickupAddress ?? "");
+  const [validationError, setValidationError] = useState("");
+  const inputStyle = { width: "100%", minHeight: 40, padding: "8px 10px", color: "#33483a", background: "#fff", border: "1px solid #d8dfd5", borderRadius: 5, fontSize: 12 };
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    const draft = { name: name.trim(), city: city.trim(), timezone: timezone.trim(), pickupAddress: pickupAddress.trim() };
+    if (draft.name.length < 2 || draft.name.length > 80) return setValidationError("Store name must be between 2 and 80 characters.");
+    if (draft.city.length < 2 || draft.city.length > 80) return setValidationError("City must be between 2 and 80 characters.");
+    if (draft.pickupAddress.length < 5 || draft.pickupAddress.length > 240) return setValidationError("Pickup address must be between 5 and 240 characters.");
+    if (!draft.timezone || draft.timezone.length > 80) return setValidationError("Enter a valid IANA timezone, such as Asia/Riyadh.");
+    try {
+      new Intl.DateTimeFormat("en-US", { timeZone: draft.timezone });
+    } catch {
+      return setValidationError("Enter a valid IANA timezone, such as Asia/Riyadh.");
+    }
+    setValidationError("");
+    await onSave(draft);
+  }
+
+  return <form onSubmit={(event) => void submit(event)} aria-busy={saving} style={{ padding: 15, background: "#fbfcf8", border: "1px solid #e2e9df", borderRadius: 7, marginTop: 10 }}>
+    <fieldset disabled={disabled || saving} style={{ border: 0, padding: 0, margin: 0 }}>
+      <legend className="eyebrow" style={{ marginBottom: 11 }}>{store ? `Edit ${store.name}` : "New demo store details"}</legend>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 11 }}>
+        <label className="field-label">Store name<input autoComplete="organization" maxLength={80} value={name} onChange={(event) => setName(event.target.value)} style={inputStyle} required /></label>
+        <label className="field-label">City<input autoComplete="address-level2" maxLength={80} value={city} onChange={(event) => setCity(event.target.value)} style={inputStyle} required /></label>
+        <label className="field-label">Timezone<input autoComplete="off" placeholder="Asia/Riyadh" maxLength={80} value={timezone} onChange={(event) => setTimezone(event.target.value)} style={inputStyle} required aria-describedby="merchant-store-timezone-help" /><small id="merchant-store-timezone-help" style={{ display: "block", marginTop: 4, fontSize: 9, color: "#728076" }}>Use an IANA timezone name.</small></label>
+        <label className="field-label">Pickup address<input autoComplete="street-address" maxLength={240} value={pickupAddress} onChange={(event) => setPickupAddress(event.target.value)} style={inputStyle} required /></label>
+      </div>
+      {validationError && <p role="alert" style={{ color: "#a34c3e", margin: "9px 0 0", fontSize: 10 }}>{validationError}</p>}
+      {saving && <p role="status" aria-live="polite" style={{ color: "#617d4f", margin: "9px 0 0", fontSize: 10 }}>Waiting for the server to confirm this store change…</p>}
+      <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", flexWrap: "wrap", marginTop: 12 }}>
+        {onCancel && <button className="quiet-button" type="button" onClick={onCancel}>Cancel</button>}
+        <button className="small-action" type="submit" disabled={disabled || saving}>{saving ? "Saving store…" : store ? "Save store details" : "Create demo store"}</button>
+      </div>
+    </fieldset>
+  </form>;
+}
+
 function MerchantPanel() {
   const [payload, setPayload] = useState<MerchantPayload | null>(null);
   const [loading, setLoading] = useState(true);
@@ -242,6 +556,26 @@ function MerchantPanel() {
   const [busyOrder, setBusyOrder] = useState("");
   const [busyInventory, setBusyInventory] = useState("");
   const [importing, setImporting] = useState(false);
+  const [pickupWindows, setPickupWindows] = useState<PickupWindow[]>([]);
+  const [pickupWindowsLoading, setPickupWindowsLoading] = useState(true);
+  const [pickupWindowError, setPickupWindowError] = useState("");
+  const [pickupWindowNotice, setPickupWindowNotice] = useState("");
+  const [busyPickupWindow, setBusyPickupWindow] = useState("");
+  const [creatingPickupWindowStore, setCreatingPickupWindowStore] = useState("");
+  const [pickupWindowCreateError, setPickupWindowCreateError] = useState("");
+  const [pickupWindowCreateNotice, setPickupWindowCreateNotice] = useState("");
+  const [merchantStores, setMerchantStores] = useState<MerchantStore[]>([]);
+  const [merchantStoresLoading, setMerchantStoresLoading] = useState(true);
+  const [csvStoreId, setCsvStoreId] = useState("");
+  const [merchantStoresError, setMerchantStoresError] = useState("");
+  const [merchantStoresNotice, setMerchantStoresNotice] = useState("");
+  const [storeSaving, setStoreSaving] = useState("");
+  const [editingStoreId, setEditingStoreId] = useState("");
+  const [showNewStoreForm, setShowNewStoreForm] = useState(false);
+  const [creatingWindowStoreId, setCreatingWindowStoreId] = useState("");
+  const [reconcilingOrder, setReconcilingOrder] = useState("");
+  const [reconcileError, setReconcileError] = useState<{ orderId: string; message: string } | null>(null);
+  const [reconcileResult, setReconcileResult] = useState<{ orderId: string; status: string; paymentStatus?: string; finalized: boolean; released: boolean; pickupReference?: string } | null>(null);
   const csvInput = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async (initial = false) => {
@@ -258,10 +592,87 @@ function MerchantPanel() {
     }
   }, []);
 
+  const loadPickupWindows = useCallback(async (initial = false) => {
+    if (!initial) {
+      setPickupWindowsLoading(true);
+      setPickupWindowError("");
+    }
+    try {
+      const result = await api<{ pickupWindows?: PickupWindow[]; windows?: PickupWindow[] }>("/api/merchant/pickup-windows");
+      setPickupWindows(result.pickupWindows ?? result.windows ?? []);
+    } catch (err) {
+      setPickupWindowError(err instanceof Error ? err.message : "Pickup windows could not be loaded.");
+    } finally {
+      setPickupWindowsLoading(false);
+    }
+  }, []);
+
+  const loadMerchantStores = useCallback(async (initial = false) => {
+    if (!initial) {
+      setMerchantStoresLoading(true);
+      setMerchantStoresError("");
+    }
+    try {
+      const result = await api<{ stores?: MerchantStore[] }>("/api/merchant/stores");
+      const receivedStores = result.stores ?? [];
+      setMerchantStores(receivedStores);
+      setCsvStoreId((current) => receivedStores.some((store) => store.id === current) ? current : receivedStores[0]?.id ?? "");
+    } catch (err) {
+      setMerchantStoresError(err instanceof Error ? err.message : "Demo merchant stores could not be loaded.");
+    } finally {
+      setMerchantStoresLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
-    const timer = window.setTimeout(() => { void load(true); }, 0);
+    const timer = window.setTimeout(() => {
+      void load(true);
+      void loadPickupWindows(true);
+      void loadMerchantStores(true);
+    }, 0);
     return () => window.clearTimeout(timer);
-  }, [load]);
+  }, [load, loadPickupWindows, loadMerchantStores]);
+
+  async function createMerchantStore(values: MerchantStoreDraft) {
+    setStoreSaving("create");
+    setMerchantStoresError("");
+    setMerchantStoresNotice("");
+    try {
+      const result = await api<{ store?: MerchantStore }>("/api/merchant/stores", { method: "POST", body: JSON.stringify(values) });
+      const created = result.store;
+      if (!created?.id || created.name !== values.name || created.city !== values.city || created.timezone !== values.timezone || created.pickupAddress !== values.pickupAddress) {
+        throw new Error("The server did not confirm the submitted demo store details.");
+      }
+      setMerchantStores((current) => [...current, created].sort((a, b) => a.name.localeCompare(b.name)));
+      setCsvStoreId((current) => current || created.id);
+      setShowNewStoreForm(false);
+      setMerchantStoresNotice("The demo store was created and confirmed by the server.");
+    } catch (err) {
+      setMerchantStoresError(err instanceof Error ? err.message : "The demo store could not be created.");
+    } finally {
+      setStoreSaving("");
+    }
+  }
+
+  async function updateMerchantStore(storeId: string, values: MerchantStoreDraft) {
+    setStoreSaving(storeId);
+    setMerchantStoresError("");
+    setMerchantStoresNotice("");
+    try {
+      const result = await api<{ store?: MerchantStore }>(`/api/merchant/stores/${encodeURIComponent(storeId)}`, { method: "PATCH", body: JSON.stringify(values) });
+      const updated = result.store;
+      if (!updated?.id || updated.id !== storeId || updated.name !== values.name || updated.city !== values.city || updated.timezone !== values.timezone || updated.pickupAddress !== values.pickupAddress) {
+        throw new Error("The server did not confirm the submitted demo store details.");
+      }
+      setMerchantStores((current) => current.map((store) => store.id === storeId ? updated : store).sort((a, b) => a.name.localeCompare(b.name)));
+      setEditingStoreId("");
+      setMerchantStoresNotice("Store details were updated and confirmed by the server.");
+    } catch (err) {
+      setMerchantStoresError(err instanceof Error ? err.message : "Store details could not be updated.");
+    } finally {
+      setStoreSaving("");
+    }
+  }
 
   async function confirmPickup(orderId: string) {
     setBusyOrder(orderId);
@@ -276,12 +687,31 @@ function MerchantPanel() {
     }
   }
 
-  async function updateInventory(lotId: string, quantityAvailable: number, priceCents: number) {
+  async function reconcileOrder(orderId: string) {
+    setReconcilingOrder(orderId);
+    setReconcileError(null);
+    setReconcileResult(null);
+    try {
+      const result = await api<{ status?: string; paymentStatus?: string; finalized?: boolean; released?: boolean; pickupReference?: string }>(`/api/merchant/orders/${encodeURIComponent(orderId)}/reconcile`, { method: "POST" });
+      if (!result.status) throw new Error("The server did not return a PayPal reconciliation status.");
+      const finalized = result.status === "PAID" || result.finalized === true;
+      const released = result.released === true;
+      setReconcileResult({ orderId, status: result.status, paymentStatus: result.paymentStatus, finalized, released, pickupReference: result.pickupReference });
+      if (finalized || released) await load();
+    } catch (err) {
+      setReconcileError({ orderId, message: err instanceof Error ? err.message : "PayPal status could not be reconciled." });
+    } finally {
+      setReconcilingOrder("");
+    }
+  }
+
+  async function updateInventory(lotId: string, quantityAvailable: number, priceCents: number, quantityReserved: number, quantitySold: number) {
     setBusyInventory(lotId);
     setError("");
     setNotice("");
     try {
-      await api(`/api/merchant/inventory/${encodeURIComponent(lotId)}`, { method: "PATCH", body: JSON.stringify({ quantityOnHand: quantityAvailable, discountedPriceCents: priceCents }) });
+      const quantityOnHand = quantityOnHandFromAvailable(quantityAvailable, quantityReserved, quantitySold);
+      await api(`/api/merchant/inventory/${encodeURIComponent(lotId)}`, { method: "PATCH", body: JSON.stringify({ quantityOnHand, discountedPriceCents: priceCents }) });
       setNotice("Inventory changes were saved to the demo merchant account.");
       await load();
     } catch (err) {
@@ -291,8 +721,57 @@ function MerchantPanel() {
     }
   }
 
+  async function updatePickupWindow(id: string, values: Omit<PickupWindow, "id" | "storeId" | "storeName" | "reservedUnits">) {
+    setBusyPickupWindow(id);
+    setPickupWindowError("");
+    setPickupWindowNotice("");
+    try {
+      const response = await api<PickupWindow | { window?: PickupWindow; pickupWindow?: PickupWindow }>(`/api/merchant/pickup-windows/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(values) });
+      const returned = "pickupWindow" in response ? response.pickupWindow : "window" in response ? response.window : response as PickupWindow;
+      if (!returned || returned.id !== id) throw new Error("The server did not confirm the updated pickup window.");
+      const existing = pickupWindows.find((item) => item.id === id);
+      const updated = { ...existing, ...returned } as PickupWindow;
+      setPickupWindows((current) => current.map((item) => item.id === id ? updated : item));
+      setPickupWindowNotice("The server confirmed the pickup window update.");
+    } catch (err) {
+      setPickupWindowError(err instanceof Error ? err.message : "The pickup window update could not be confirmed.");
+    } finally {
+      setBusyPickupWindow("");
+    }
+  }
+
+  async function createPickupWindow(storeId: string, values: PickupWindowDraft) {
+    setCreatingPickupWindowStore(storeId);
+    setPickupWindowCreateError("");
+    setPickupWindowCreateNotice("");
+    try {
+      const result = await api<{ pickupWindow?: PickupWindow }>("/api/merchant/pickup-windows", { method: "POST", body: JSON.stringify({ storeId, ...values }) });
+      const created = result.pickupWindow;
+      if (!created?.id || created.storeId !== storeId || created.startsAt !== values.startsAt || created.endsAt !== values.endsAt || created.lastReservationAt !== values.lastReservationAt || created.capacityUnits !== values.capacityUnits || created.reservedUnits !== 0 || created.active !== true) {
+        throw new Error("The server did not confirm the submitted pickup window.");
+      }
+      setPickupWindows((current) => current.some((window) => window.id === created.id)
+        ? current
+        : [...current, created].sort((a, b) => a.startsAt.localeCompare(b.startsAt)));
+      setMerchantStores((current) => current.map((store) => store.id === storeId
+        ? { ...store, pickupWindowCount: (store.pickupWindowCount ?? 0) + 1 }
+        : store));
+      setCreatingWindowStoreId("");
+      setPickupWindowCreateNotice(`Pickup window for ${created.storeName ?? "the demo store"} was created and confirmed by the server.`);
+    } catch (err) {
+      setPickupWindowCreateError(err instanceof Error ? err.message : "Pickup window could not be created. Check the schedule and try again.");
+    } finally {
+      setCreatingPickupWindowStore("");
+    }
+  }
+
   async function importCsv(file?: File) {
     if (!file) return;
+    if (!csvStoreId || !merchantStores.some((store) => store.id === csvStoreId)) {
+      setError("Choose an owned demo store as the CSV inventory destination.");
+      if (csvInput.current) csvInput.current.value = "";
+      return;
+    }
     if (!file.name.toLowerCase().endsWith(".csv") && file.type !== "text/csv") {
       setError("Choose a CSV file to import inventory.");
       if (csvInput.current) csvInput.current.value = "";
@@ -302,9 +781,12 @@ function MerchantPanel() {
     setError("");
     setNotice("");
     try {
-      const result = await api<{ imported?: number; message?: string }>("/api/merchant/inventory/import", { method: "POST", headers: { "Content-Type": "text/csv" }, body: file });
-      setNotice(result.message ?? `${result.imported ?? "CSV"} inventory rows were imported into the demo merchant account.`);
+      const result = await api<{ importedCount?: number; message?: string }>(`/api/merchant/inventory/import?storeId=${encodeURIComponent(csvStoreId)}`, { method: "POST", headers: { "Content-Type": "text/csv" }, body: file });
       await load();
+      if (!Number.isInteger(result.importedCount) || (result.importedCount ?? -1) < 0 || typeof result.message !== "string" || !result.message.trim()) {
+        throw new Error("The server did not confirm the CSV import result. Inventory was refreshed; review the destination store before retrying.");
+      }
+      setNotice(result.message);
     } catch (err) {
       setError(err instanceof Error ? err.message : "CSV import failed. No inventory changes were confirmed.");
     } finally {
@@ -326,15 +808,96 @@ function MerchantPanel() {
       <div className="kpi-card"><span>Surplus units rescued</span><strong>{loading ? "—" : analytics?.unitsRescued ?? "—"}</strong><small>Recorded from completed orders</small></div>
       <div className="kpi-card"><span>Recovered revenue</span><strong>{loading ? "—" : analytics?.revenueCents == null ? "—" : money(analytics.revenueCents)}</strong><small>Calculated from paid orders</small></div>
     </div>
+    <section className="panel-card" aria-labelledby="merchant-stores-title" style={{ marginBottom: 13, padding: 15 }}>
+      <div className="panel-title" style={{ padding: "0 0 12px", minHeight: "auto", marginBottom: 12 }}>
+        <div><span className="eyebrow">Demo merchant settings</span><h3 id="merchant-stores-title">Your demo stores</h3></div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <span className="readonly-tag">Fictional demo merchant only</span>
+          <button className="quiet-button" type="button" disabled={merchantStoresLoading || Boolean(storeSaving)} onClick={() => void loadMerchantStores()}>{merchantStoresLoading ? "Loading…" : "Refresh stores"}</button>
+          <button className="small-action" type="button" disabled={Boolean(storeSaving) || showNewStoreForm || Boolean(editingStoreId)} onClick={() => { setMerchantStoresError(""); setMerchantStoresNotice(""); setShowNewStoreForm(true); }}>Add demo store</button>
+        </div>
+      </div>
+      {merchantStoresError && <StatusNotice kind="error">{merchantStoresError}</StatusNotice>}
+      {merchantStoresNotice && <StatusNotice kind="success" onDismiss={() => setMerchantStoresNotice("")}>{merchantStoresNotice}</StatusNotice>}
+      {pickupWindowCreateNotice && <StatusNotice kind="success" onDismiss={() => setPickupWindowCreateNotice("")}>{pickupWindowCreateNotice}</StatusNotice>}
+      <p style={{ margin: "0 0 11px", color: "#718075", fontSize: 10, lineHeight: 1.5 }}>Manage store details for this seeded demo merchant. The server can reject pickup address or timezone changes while reservations or orders are active. This screen does not create merchant accounts.</p>
+      {merchantStoresLoading ? <div className="loading-line" aria-live="polite"><span className="spinner" /> Loading demo merchant stores…</div>
+        : merchantStores.length ? <div style={{ display: "grid", gap: 9 }}>{merchantStores.map((store) => <article key={`${store.id}-${store.updatedAt ?? ""}`} className="panel-card" aria-busy={storeSaving === store.id || creatingPickupWindowStore === store.id} style={{ padding: 13, borderColor: "#e4e9e1" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
+            <div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}><strong style={{ color: "#344a3b", fontSize: 13 }}>{store.name}</strong><span className="readonly-tag">{store.city}</span></div>
+              <address style={{ margin: "6px 0 0", color: "#69776b", fontSize: 10, fontStyle: "normal", lineHeight: 1.6 }}>{store.pickupAddress}</address>
+              <p style={{ margin: "3px 0 0", color: "#69776b", fontSize: 10 }}>Timezone: <strong>{store.timezone}</strong></p>
+              <small style={{ display: "block", color: "#8a948b", fontSize: 9, marginTop: 5 }}>{store.inventoryListings ?? 0} inventory listings · {store.pickupWindowCount ?? 0} pickup windows · {store.orderCount ?? 0} orders</small>
+            </div>
+            <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
+              <button type="button" className="quiet-button" disabled={Boolean(storeSaving) || Boolean(creatingPickupWindowStore) || Boolean(busyPickupWindow) || showNewStoreForm || (Boolean(editingStoreId) && editingStoreId !== store.id)} onClick={() => { setPickupWindowCreateError(""); setPickupWindowCreateNotice(""); setCreatingWindowStoreId(creatingWindowStoreId === store.id ? "" : store.id); }}>{creatingWindowStoreId === store.id ? "Close window form" : "Add pickup window"}</button>
+              <button type="button" className="quiet-button" disabled={Boolean(storeSaving) || Boolean(creatingPickupWindowStore) || Boolean(busyPickupWindow) || showNewStoreForm || creatingWindowStoreId === store.id || (Boolean(editingStoreId) && editingStoreId !== store.id)} onClick={() => { setMerchantStoresError(""); setMerchantStoresNotice(""); setEditingStoreId(editingStoreId === store.id ? "" : store.id); }}>{editingStoreId === store.id ? "Close editor" : "Edit store"}</button>
+            </div>
+          </div>
+          {editingStoreId === store.id && <MerchantStoreForm key={`edit-${store.id}-${store.updatedAt ?? ""}`} store={store} saving={storeSaving === store.id} disabled={Boolean(storeSaving && storeSaving !== store.id)} onSave={(values) => updateMerchantStore(store.id, values)} onCancel={() => setEditingStoreId("")} />}
+          {creatingWindowStoreId === store.id && <>
+            {pickupWindowCreateError && <div style={{ marginTop: 9 }}><StatusNotice kind="error">{pickupWindowCreateError}</StatusNotice></div>}
+            <CreatePickupWindowForm key={`new-window-${store.id}-${store.updatedAt ?? ""}`} store={store} existingWindows={pickupWindows} saving={creatingPickupWindowStore === store.id} disabled={Boolean(creatingPickupWindowStore && creatingPickupWindowStore !== store.id)} onCreate={createPickupWindow} onCancel={() => { setCreatingWindowStoreId(""); setPickupWindowCreateError(""); }} />
+          </>}
+        </article>)}</div>
+          : <div className="panel-empty compact"><strong>No demo stores returned</strong><p>Create a store for the fictional demo merchant or refresh to retry.</p></div>}
+      {showNewStoreForm && <MerchantStoreForm key="new-demo-store" saving={storeSaving === "create"} disabled={Boolean(storeSaving && storeSaving !== "create")} onSave={createMerchantStore} onCancel={() => setShowNewStoreForm(false)} />}
+      {storeSaving && <p role="status" aria-live="polite" style={{ margin: "9px 0 0", color: "#617d4f", fontSize: 10 }}>Waiting for the server response. Store details are not changed in the list until the server confirms them.</p>}
+    </section>
     <div className="merchant-columns">
       <section className="panel-card order-panel"><div className="panel-title"><div><span className="eyebrow">Order queue</span><h3>Pickups to prepare</h3></div><button type="button" className="quiet-button" onClick={() => void load()} disabled={loading}>Refresh</button></div>
-        {loading ? <div className="loading-line"><span className="spinner" /> Loading order data…</div> : orders.length ? <div className="order-list">{orders.map((order) => <article className="order-row" key={order.id}><div className="order-row-main"><div className="order-ident"><strong>#{order.pickupReference ?? order.id.slice(0, 8)}</strong><span className={`order-status status-tag status-${order.status.toLowerCase()}`}>{order.status.replaceAll("_", " ")}</span></div><p>{order.items?.map((item) => `${item.quantity} × ${item.productName ?? item.name ?? "listed item"}`).join(" · ") || "Item details unavailable"}</p><small>{order.storeName ?? "Demo store"} · {dateLabel(order.pickupStart ?? order.createdAt)} · {timeLabel(order.pickupStart)}{order.pickupEnd ? `–${timeLabel(order.pickupEnd)}` : ""}</small></div><div className="order-row-end"><strong>{money(order.amountCents)}</strong>{order.status === "PAID" && <button className="small-action" onClick={() => void confirmPickup(order.id)} disabled={busyOrder === order.id} type="button">{busyOrder === order.id ? "Saving…" : "Confirm pickup"}</button>}</div></article>)}</div> : <div className="panel-empty"><span className="panel-empty-icon"><Icon name="bag" size={23} /></span><strong>No orders yet</strong><p>Paid Sandbox orders will appear here after server-side capture.</p></div>}
+        {loading ? <div className="loading-line"><span className="spinner" /> Loading order data…</div> : orders.length ? <div className="order-list">{orders.map((order) => <article className="order-row" key={order.id}>
+          <div className="order-row-main"><div className="order-ident"><strong>#{order.pickupReference ?? order.id.slice(0, 8)}</strong><span className={`order-status status-tag status-${order.status.toLowerCase()}`}>{order.status.replaceAll("_", " ")}</span></div>
+            <p>{order.items?.map((item) => `${item.quantity} × ${item.productName ?? item.name ?? "listed item"}`).join(" · ") || "Item details unavailable"}</p>
+            <small>{order.storeName ?? "Demo store"} · {dateLabel(order.pickupStart ?? order.createdAt)} · {timeLabel(order.pickupStart)}{order.pickupEnd ? `–${timeLabel(order.pickupEnd)}` : ""}</small>
+            {(order.status === "PAYMENT_EXCEPTION" || reconcileResult?.orderId === order.id || reconcileError?.orderId === order.id) && <div style={{ marginTop: 8 }}>
+              {reconcileError?.orderId === order.id && <p role="alert" style={{ margin: "0 0 6px", color: "#a34c3e", fontSize: 9 }}>{reconcileError.message}</p>}
+              {reconcileResult?.orderId === order.id && <p role="status" aria-live="polite" style={{ margin: "0 0 6px", color: reconcileResult.finalized ? "#37734b" : "#8a6237", fontSize: 9 }}>
+                {reconcileResult.finalized
+                  ? `Payment verified and finalized${reconcileResult.pickupReference ? ` · pickup reference ${reconcileResult.pickupReference}` : ""}.`
+                  : reconcileResult.released
+                    ? `PayPal confirmed this order was voided. Reservation ${reconcileResult.status.toLowerCase()} and inventory release confirmed; no payment was recorded.`
+                    : `PayPal status: ${reconcileResult.status}${reconcileResult.paymentStatus ? ` · payment ${reconcileResult.paymentStatus}` : ""}. This order is still unpaid or unconfirmed, and its reserved inventory remains held.`}
+              </p>}
+              {order.status === "PAYMENT_EXCEPTION" && <>
+                <button className="small-action" type="button" disabled={Boolean(reconcilingOrder) || loading} onClick={() => void reconcileOrder(order.id)}>{reconcilingOrder === order.id ? "Checking PayPal status…" : "Reconcile PayPal status"}</button>
+                {reconcilingOrder === order.id && <p role="status" aria-live="polite" style={{ margin: "6px 0 0", color: "#617d4f", fontSize: 9 }}>Checking the saved order with PayPal Sandbox. Inventory remains reserved during this check.</p>}
+              </>}
+            </div>}
+          </div>
+          <div className="order-row-end"><strong>{money(order.amountCents)}</strong>{order.status === "PAID" && <button className="small-action" onClick={() => void confirmPickup(order.id)} disabled={busyOrder === order.id} type="button">{busyOrder === order.id ? "Saving…" : "Confirm pickup"}</button>}</div>
+        </article>)}</div> : <div className="panel-empty"><span className="panel-empty-icon"><Icon name="bag" size={23} /></span><strong>No orders yet</strong><p>Paid Sandbox orders will appear here after server-side capture.</p></div>}
       </section>
-      <section className="panel-card inventory-panel"><div className="panel-title"><div><span className="eyebrow">Surplus stock</span><h3>Inventory snapshot</h3></div><div className="inventory-actions" style={{ display: "flex", alignItems: "center", gap: 8 }}><span className="readonly-tag">Demo merchant records</span><input ref={csvInput} type="file" accept=".csv,text/csv" aria-label="Choose inventory CSV file" style={{ display: "none" }} onChange={(event) => void importCsv(event.currentTarget.files?.[0])} /><button type="button" className="quiet-button" onClick={() => csvInput.current?.click()} disabled={importing || loading}>{importing ? "Importing…" : "Import CSV"}</button></div></div>
+      <section className="panel-card inventory-panel"><div className="panel-title"><div><span className="eyebrow">Surplus stock</span><h3>Inventory snapshot</h3></div><div className="inventory-actions" style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        <label htmlFor="csv-destination-store" className="field-label" style={{ display: "flex", flexDirection: "row", alignItems: "center", gap: 6, whiteSpace: "nowrap" }}>CSV destination
+          <select id="csv-destination-store" aria-label="CSV inventory destination store" value={csvStoreId} onChange={(event) => setCsvStoreId(event.target.value)} disabled={merchantStoresLoading || importing || merchantStores.length === 0} style={{ minHeight: 31, maxWidth: 230, padding: "5px 7px", color: "#33483a", background: "#fff", border: "1px solid #d8dfd5", borderRadius: 5, fontSize: 10 }}>
+            {merchantStores.length ? merchantStores.map((store) => <option key={store.id} value={store.id}>{store.name} · {store.city}</option>) : <option value="">No demo stores available</option>}
+          </select>
+        </label>
+        <span className="readonly-tag">Destination: {merchantStores.find((store) => store.id === csvStoreId)?.name ?? (merchantStoresLoading ? "Loading stores…" : "No store selected")}</span>
+        <input ref={csvInput} type="file" accept=".csv,text/csv" aria-label="Choose inventory CSV file" style={{ display: "none" }} onChange={(event) => void importCsv(event.currentTarget.files?.[0])} />
+        <button type="button" className="quiet-button" onClick={() => csvInput.current?.click()} disabled={importing || loading || merchantStoresLoading || !csvStoreId}>{importing ? "Importing…" : "Import CSV"}</button>
+      </div></div>
         {loading ? <div className="loading-line"><span className="spinner" /> Loading inventory…</div> : inventory.length ? <div className="inventory-table-wrap"><table className="inventory-table"><thead><tr><th>Product</th><th>Available</th><th>Resqiva price</th><th>Actions</th></tr></thead><tbody>{inventory.map((item) => <InventoryEditor key={`${item.lotId ?? item.id}-${item.quantityAvailable}-${item.priceCents}`} item={item} busy={busyInventory === (item.lotId ?? item.id)} onSave={updateInventory} />)}</tbody></table></div> : <div className="panel-empty compact"><strong>No inventory data returned</strong><p>Import a CSV or connect the demo merchant inventory source.</p></div>}
         <p className="panel-footnote">Stock and prices shown here come from server records. Unknown expiry or allergen data stays unknown.</p>
       </section>
     </div>
+    <section className="panel-card" aria-labelledby="pickup-windows-title" style={{ marginTop: 13, padding: 15 }}>
+      <div className="panel-title" style={{ padding: "0 0 12px", minHeight: "auto", marginBottom: 12 }}><div><span className="eyebrow">Store operations</span><h3 id="pickup-windows-title">Pickup windows</h3></div><button className="quiet-button" type="button" disabled={pickupWindowsLoading || Boolean(busyPickupWindow)} onClick={() => void loadPickupWindows()}>{pickupWindowsLoading ? "Loading…" : "Refresh windows"}</button></div>
+      {pickupWindowError && <StatusNotice kind="error">{pickupWindowError}</StatusNotice>}
+      {pickupWindowNotice && <StatusNotice kind="success" onDismiss={() => setPickupWindowNotice("")}>{pickupWindowNotice}</StatusNotice>}
+      {pickupWindowsLoading ? <div className="loading-line" aria-live="polite"><span className="spinner" /> Loading pickup windows…</div>
+        : pickupWindows.length ? <div>{pickupWindows.map((pickupWindow) => <PickupWindowEditor
+          key={`${pickupWindow.id}-${pickupWindow.startsAt}-${pickupWindow.endsAt}-${pickupWindow.lastReservationAt}-${pickupWindow.capacityUnits}-${pickupWindow.active}-${pickupWindow.timezone ?? ""}`}
+          window={pickupWindow}
+          saving={busyPickupWindow === pickupWindow.id}
+          disabled={Boolean(busyPickupWindow && busyPickupWindow !== pickupWindow.id)}
+          onSave={updatePickupWindow}
+        />)}</div>
+          : <div className="panel-empty compact"><strong>No pickup windows returned</strong><p>This demo merchant has no pickup windows available to manage.</p></div>}
+      <p className="panel-footnote">Capacity and reservations are displayed from server records. Updates are confirmed only after the server returns the changed window.</p>
+    </section>
     <div className="merchant-note"><span><Icon name="shop" size={17} /></span><p><strong>Fictional merchant account only.</strong> The demo session grants a seeded merchant role for this browser demonstration. It does not represent production merchant authentication or account access.</p></div>
   </section>;
 }
@@ -403,6 +966,9 @@ export default function HomePage() {
   const [paypalConfigLoading, setPaypalConfigLoading] = useState(true);
   const [paypalConfigError, setPaypalConfigError] = useState("");
   const [paymentUncertain, setPaymentUncertain] = useState(false);
+  const [reservationReconcileBusy, setReservationReconcileBusy] = useState(false);
+  const [reservationReconcileError, setReservationReconcileError] = useState("");
+  const [reservationReconcileResult, setReservationReconcileResult] = useState<ReservationReconcileResult | null>(null);
   const [customerSessionReady, setCustomerSessionReady] = useState(false);
   const [ordersRefreshKey, setOrdersRefreshKey] = useState(0);
 
@@ -566,6 +1132,8 @@ export default function HomePage() {
   async function reserveAndCheckout(bundle: PlannedBundle) {
     setCheckoutReservation(null);
     setPaymentUncertain(false);
+    setReservationReconcileError("");
+    setReservationReconcileResult(null);
     setBusyBundle(bundle.id);
     setPlanError("");
     setNotice(null);
@@ -620,6 +1188,8 @@ export default function HomePage() {
       });
       if (result.status !== "PAID") {
         setPaymentUncertain(true);
+        setReservationReconcileError("");
+        setReservationReconcileResult(null);
         setNotice({ kind: "error", message: result.message ?? "The server did not confirm a paid order. Inventory remains reserved for reconciliation." });
         return;
       }
@@ -633,9 +1203,51 @@ export default function HomePage() {
       }
     } catch (err) {
       setPaymentUncertain(true);
+      setReservationReconcileError("");
+      setReservationReconcileResult(null);
       setNotice({ kind: "error", message: `Capture could not be confirmed. Payment state may be uncertain and inventory remains reserved; do not retry or cancel until it is reconciled.${err instanceof Error ? ` ${err.message}` : ""}` });
     } finally {
       setCaptureBusy(false);
+    }
+  }
+
+  async function reconcilePaypalReservation() {
+    const reservationId = checkoutReservation?.reservationId;
+    if (!reservationId) {
+      setReservationReconcileError("This checkout has no reservation reference to reconcile.");
+      return;
+    }
+    setReservationReconcileBusy(true);
+    setReservationReconcileError("");
+    setReservationReconcileResult(null);
+    try {
+      await ensureDemoSession("CUSTOMER");
+      const result = await api<ReservationReconcileResult>(`/api/reservations/${encodeURIComponent(reservationId)}/reconcile`, { method: "POST" });
+      if (result.status === "PAID") {
+        if (!result.orderId) {
+          throw new Error("The server returned PAID without a receipt reference. Checkout remains open; no receipt redirect was attempted.");
+        }
+        setReservationReconcileResult(result);
+        setPaymentUncertain(false);
+        setCheckoutReservation(null);
+        setOrdersRefreshKey((current) => current + 1);
+        router.push(`/orders/${encodeURIComponent(result.orderId)}`);
+        return;
+      }
+      if ((result.status === "CANCELLED" || result.status === "EXPIRED") && result.released === true) {
+        setReservationReconcileResult(result);
+        setPaymentUncertain(false);
+        setCheckoutReservation(null);
+        setNotice({ kind: "info", message: `Reservation status ${result.status}; the server confirmed inventory was released. No payment was recorded.` });
+        return;
+      }
+      setReservationReconcileResult(result);
+    } catch (err) {
+      setReservationReconcileError(err instanceof Error
+        ? `${err.message} Inventory remains held; you can check again later.`
+        : "Payment status could not be checked. Inventory remains held; you can check again later.");
+    } finally {
+      setReservationReconcileBusy(false);
     }
   }
 
@@ -666,6 +1278,8 @@ export default function HomePage() {
 
   function handlePaypalError() {
     setPaymentUncertain(true);
+    setReservationReconcileError("");
+    setReservationReconcileResult(null);
     setNotice({ kind: "error", message: "PayPal reported an error. Payment or order state may be uncertain. Inventory remains reserved for reconciliation; no cancellation was sent." });
   }
 
@@ -693,7 +1307,7 @@ export default function HomePage() {
         {loadingPlan ? <div className="result-loading"><div className="loader-mark"><span /><span /><span /></div><strong>Finding a plan that fits</strong><p>Parsing preferences, checking listed inventory, and validating the hard constraints.</p><div className="skeleton-card"><i /><i /><i /></div></div> : bundles.length ? <div className="bundle-list">{bundles.map((bundle) => <BundleCard key={bundle.id} bundle={bundle} busy={busyBundle === bundle.id} disabled={Boolean(checkoutReservation)} onReserve={reserveAndCheckout} />)}</div> : <EmptyMealState onExample={useExample} />}
         {preferences && !loadingPlan && bundles.length > 0 && <div className="parsed-preferences"><span className="parsed-icon"><Icon name="check" size={15} /></span><span><strong>Request understood</strong><small>{preferences.mealCount} meals · {preferences.servings} servings · up to {money(preferences.budgetCents)}{preferences.exclusions.length ? ` · ${preferences.exclusions.join(", ")}` : ""}{preferences.allergies.length ? ` · allergy metadata checked for ${preferences.allergies.join(", ")}` : ""}</small></span></div>}
       </div></div>
-      {checkoutReservation && <CheckoutPanel checkout={checkoutReservation} clientId={paypalClientId} configLoading={paypalConfigLoading} configError={paypalConfigError} busy={captureBusy} uncertain={paymentUncertain} onCreateOrder={createPaypalOrder} onApprove={approvePaypalOrder} onCancel={cancelPaypalReservation} onError={handlePaypalError} onClose={() => setCheckoutReservation(null)} onReserve={reserveAndCheckout} />}
+      {checkoutReservation && <CheckoutPanel checkout={checkoutReservation} clientId={paypalClientId} configLoading={paypalConfigLoading} configError={paypalConfigError} busy={captureBusy} uncertain={paymentUncertain} reconcileBusy={reservationReconcileBusy} reconcileError={reservationReconcileError} reconcileResult={reservationReconcileResult} onCreateOrder={createPaypalOrder} onApprove={approvePaypalOrder} onCancel={cancelPaypalReservation} onReconcile={reconcilePaypalReservation} onError={handlePaypalError} onClose={() => setCheckoutReservation(null)} onReserve={reserveAndCheckout} />}
       <div className="safety-strip"><div className="safety-icon"><Icon name="check" size={17} /></div><p><strong>Good food, honest information.</strong> Allergy data is only as complete as the merchant records. Unknown means unknown—Resqiva does not certify food as allergy-safe.</p><a href="#limits">Safety & limits <Icon name="arrow" size={14} /></a></div>
     </section>
 

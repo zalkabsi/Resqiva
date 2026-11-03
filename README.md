@@ -9,11 +9,11 @@ All merchants, stores, products, and pickup locations in the seed data are ficti
 ## Current status
 
 - The Fireworks preference parser is pinned to `accounts/fireworks/models/deepseek-v4p1-flash-1017`. It suggests structured preferences only; it cannot select inventory, set prices, authorize payment, or change stock. There is no alternate model or silent fallback.
-- The app has a deterministic meal optimizer, transactional stock reservations, merchant inventory editing and CSV import, order management, PayPal Sandbox routes, and webhook verification code.
+- The app has a deterministic meal optimizer, transactional stock reservations, merchant inventory editing and CSV import, demo-store and pickup-window management, order management, and customer/merchant payment-reconciliation controls. PayPal Sandbox routes and webhook verification are implemented.
 - Customer order history and a receipt page are included; a receipt shows paid only after server-verified capture.
 - A successful PayPal Sandbox order, buyer approval, and capture have **not** been verified. The currently configured Sandbox credentials were rejected by OAuth (`invalid_client`). A Sandbox buyer account is also needed for approval.
 - No hosted demo is deployed, and this repository has not been published. A public YouTube demo and Devpost submission have not been made.
-- Lint, type-check, 40 unit/route tests, production build, live API smoke, clean local setup, and one browser E2E test passed. Exact scope and PayPal blockers are recorded in [`docs/testing.md`](docs/testing.md).
+- Lint, type-check, 163 unit/route tests, production build, live API smoke, clean local setup, and one browser E2E test passed. Exact scope and PayPal blockers are recorded in [`docs/testing.md`](docs/testing.md).
 
 ## Local setup
 
@@ -51,11 +51,11 @@ For a clean local database reset, run `npm run db:reset`. This deletes local dat
 ## Using the demo
 
 - The shopper workspace lets you choose one of three fictional stores, describe a meal request, set budget and servings, compare feasible bundles, and reserve inventory.
-- The merchant workspace uses a fictional seeded merchant session. It shows inventory and orders, supports stock and price edits and CSV imports, and can confirm pickup for paid orders.
+- The merchant workspace uses a fictional seeded merchant session. It shows inventory and orders, supports stock and price edits and CSV imports, demo-store and pickup-window management, and manual PayPal status reconciliation. It can confirm pickup for paid orders.
 - Demo role sessions are intentionally simplified for judging and local use. They are not production authentication or real merchant account management.
 - Resqiva must not display an order as paid based on a browser redirect or callback. Only a server-verified PayPal capture can mark an order paid. If payment status is uncertain, the reservation is held for reconciliation.
 
-To import inventory, upload a CSV with these required headers: `sku,name,category,quantity,priceCents,originalPriceCents,expiresAt`. Optional headers are `ingredients,allergens,allergenDataStatus,dietaryTags,expirationType`. Rows are assigned to the current demo merchant's store unless a merchant-owned `storeId` is supplied. Prices are integer cents. See the importer in `src/app/api/merchant/inventory/import/route.ts` for accepted values and validation.
+To import inventory, upload a CSV with these required headers: `sku,name,category,quantity,priceCents,originalPriceCents,expiresAt,expirationType`. The expiry date must be in the future, and expiration type must be known. Optional headers are `ingredients,allergens,allergenDataStatus,dietaryTags`. Choose the destination from the merchant's demo stores in the UI; the API also defaults to the first owned demo store when no `storeId` is supplied. Prices are integer cents, and submitted on-hand quantity cannot reduce units already reserved or sold. See the importer in `src/app/api/merchant/inventory/import/route.ts` for accepted values and validation.
 
 ## AI, inventory, and food safety
 

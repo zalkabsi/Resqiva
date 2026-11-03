@@ -6,7 +6,7 @@
 
 The reproducible path is PostgreSQL through Docker Compose, Prisma migrations/seeds, and the Next.js application. A fresh Docker volume received the migration and deterministic seed, and `npm run demo:up` started Next.js successfully after a leftover local dev process was stopped. Keep secrets in a local environment file that is excluded from Git; `.env.example` contains placeholders only.
 
-The managed environment currently reports an enforced restricted network policy allowing `api.fireworks.ai`, `api-m.sandbox.paypal.com`, and Prisma binary downloads. Required AI/model and PayPal client runtime bindings report ready; app-level Fireworks calls succeeded. PayPal OAuth returned `invalid_client`. The current policy does not list `www.paypal.com`, which the browser JavaScript SDK may need.
+The managed environment currently reports an enforced restricted network policy allowing `api.fireworks.ai`, `api-m.sandbox.paypal.com`, and Prisma binary downloads. Required AI/model and PayPal client runtime bindings report ready; app-level Fireworks calls succeeded. PayPal OAuth returned `invalid_client`. The current policy does not list `www.paypal.com` (browser JavaScript SDK) or `www.sandbox.paypal.com` (Sandbox buyer approval page).
 
 ## Hosted judge demo target
 

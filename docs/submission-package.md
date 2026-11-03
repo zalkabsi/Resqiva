@@ -18,7 +18,7 @@ Resqiva turns a shopper's meal preferences into practical bundles built from ava
 
 **How it works.** `accounts/fireworks/models/deepseek-v4p1-flash-1017` parses preferences into a strict schema. It has no authority over product IDs, prices, stock, or payments. A deterministic optimizer checks inventory and hard constraints, calculates totals from integer-cent records, and returns explanations. The server reserves stock transactionally and the PayPal adapter uses Sandbox Orders API calls, idempotency keys, status queries, and webhook verification code.
 
-**Current evidence.** The app's Fireworks-backed parser and planner passed a real local API smoke and browser E2E run. The unit suite passed 40 tests, the local setup/migration/seed passed, and the production build passed. PayPal Sandbox OAuth returned `invalid_client`; no buyer approval, capture, paid order, webhook delivery, or successful payment reconciliation is verified. Do not describe checkout as completed until those steps pass with a matching Sandbox app and buyer.
+**Current evidence.** The app's Fireworks-backed parser and planner passed a real local API smoke and browser E2E run. The suite passed 163 tests in 19 files; the updated E2E created a demo store and pickup window; local setup/migration/seed and the production build passed. PayPal Sandbox OAuth returned `invalid_client`; no buyer approval, capture, paid order, webhook delivery, or live payment reconciliation is verified. Do not describe checkout as completed until those steps pass with a matching Sandbox app and buyer.
 
 **How it was built.** Next.js 16, React 19, TypeScript, PostgreSQL, Prisma 7, Zod, Fireworks AI, PayPal JavaScript SDK and Orders API Sandbox, Vitest, Playwright, and Docker Compose. Demo records are fictional and deterministic. The local starting checkout was empty; this implementation began on November 3, 2026.
 
@@ -26,11 +26,11 @@ Resqiva turns a shopper's meal preferences into practical bundles built from ava
 
 **Accomplishments.** A real Fireworks-backed request flows through the app, returns validated preferences, and produces inventory-grounded meal plans. The API smoke verified exact reserved-unit release on cancellation and idempotent repeat handling. The shopper and merchant pages pass a browser test. The checkout failure is exposed truthfully rather than represented as a paid order.
 
-The seeded optimizer benchmark compared 12 request/store scenarios with a greedy discount baseline: both were feasible in 11/12, the optimizer's emitted bundles had zero independently checked constraint violations, and median times were 4.721 ms and 4.628 ms respectively. This is a small in-process demo-data measurement and does not establish general superiority.
+The seeded optimizer benchmark compared 12 request/store scenarios with a greedy discount baseline: both were feasible in 11/12, the optimizer's emitted bundles had zero independently checked constraint violations, and median times were 5.201 ms and 4.990 ms respectively. This is a small in-process demo-data measurement and does not establish general superiority.
 
 **Lessons learned.** AI can help translate preferences, while deterministic server rules should decide what is actually available and payable. A browser approval event is not proof of capture. Unknown food-safety metadata should remain unknown, and simulated records should not be turned into impact claims.
 
-**Future work.** Verify the full Sandbox buyer approval/capture/inventory/pickup path, test actual webhook delivery and recovery, add operator reconciliation and pickup-window management, arrange free judge access, and only then record a truthful demonstration.
+**Future work.** Verify the full Sandbox buyer approval/capture/inventory/pickup path, test actual webhook delivery and recovery, add scheduled reconciliation/refund handling, arrange free judge access, and only then record a truthful demonstration.
 
 ## Built-with tags
 
@@ -38,7 +38,7 @@ Next.js, React, TypeScript, PostgreSQL, Prisma, Fireworks AI, PayPal Sandbox, Zo
 
 ## Submission links (not ready)
 
-- Repository: `https://github.com/zalkabsi/Resqiva` — intended slug; still unpublished and empty remotely at last check.
+- Repository: `https://github.com/zalkabsi/Resqiva` — intended slug; source push is authorized and pending, and public visibility/About license display must be checked after push.
 - Hosted demo: none. Render is unverified and is not required by the official rules if complete run instructions work.
 - Public YouTube demo under three minutes: none recorded or uploaded.
 - Local setup: [README.md](../README.md).

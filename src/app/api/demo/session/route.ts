@@ -2,8 +2,10 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createSessionToken, isSameOriginMutation, sessionCookie } from "@/lib/auth";
 import { getDb } from "@/lib/db";
+import { readJsonLimited, RequestReadError } from "@/lib/request";
 
 export const runtime = "nodejs";
+const MAX_REQUEST_BYTES = 4 * 1024;
 
 const bodySchema = z.object({ role: z.enum(["CUSTOMER", "MERCHANT_ADMIN"]) }).strict();
 
@@ -17,9 +19,15 @@ export async function POST(request: Request) {
 
   let body: unknown;
   try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: { code: "invalid_request", message: "Choose a demo workspace." } }, { status: 400 });
+    body = await readJsonLimited(request, MAX_REQUEST_BYTES);
+  } catch (error) {
+    const tooLarge = error instanceof RequestReadError && error.status === 413;
+    return NextResponse.json({
+      error: {
+        code: "invalid_request",
+        message: tooLarge ? "Request body is too large." : "Choose a demo workspace.",
+      },
+    }, { status: tooLarge ? 413 : 400 });
   }
   const parsed = bodySchema.safeParse(body);
   if (!parsed.success) {

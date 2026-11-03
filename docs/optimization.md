@@ -29,8 +29,8 @@ The script loaded the next active pickup window and eligible inventory for each 
 |---|---:|---:|
 | Feasible scenarios | 11 / 12 | 11 / 12 |
 | Independently checked violations in returned bundles | 0 | Baseline returns only feasibility/status, not bundles |
-| Median solver time | 4.721 ms | 4.628 ms |
-| p95 solver time | 9.491 ms | 10.036 ms |
+| Median solver time | 5.201 ms | 4.990 ms |
+| p95 solver time | 24.117 ms | 21.259 ms |
 | First bundle lower total than feasible baseline | 10 / 11 | — |
 | First bundle higher total than feasible baseline | 1 / 11 | — |
 

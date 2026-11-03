@@ -31,7 +31,7 @@ const oauthSuccess = () => json({ access_token: "test-access-token", token_type:
 
 beforeEach(() => {
   process.env.PAYPAL_CLIENT_ID = "test-client-id";
-  process.env.PAYPAL_CLIENT_SECRET = "test-client-secret";
+  process.env.PAYPAL_CLIENT_SECRET = "test";
   delete process.env.PAYPAL_WEBHOOK_ID;
 });
 
@@ -147,18 +147,18 @@ describe("PayPal Sandbox client", () => {
     await expect(verifyPayPalWebhookSignature(headers, event, fetcher)).rejects.toThrow(/PAYPAL_WEBHOOK_ID is required/);
     expect(fetcher).not.toHaveBeenCalled();
 
-    process.env.PAYPAL_WEBHOOK_ID = "sandbox-webhook-id";
+    process.env.PAYPAL_WEBHOOK_ID = "test-hook";
     const calls: RecordedCall[] = [];
     const validFetcher = mockFetch([oauthSuccess(), json({ verification_status: "SUCCESS" })], calls);
     await expect(verifyPayPalWebhookSignature(headers, event, validFetcher)).resolves.toBe(true);
     expect(String(calls[1]?.input)).toBe("https://api-m.sandbox.paypal.com/v1/notifications/verify-webhook-signature");
     const body = JSON.parse(String(calls[1]?.init?.body)) as Record<string, unknown>;
-    expect(body.webhook_id).toBe("sandbox-webhook-id");
+    expect(body.webhook_id).toBe("test-hook");
     expect(body.webhook_event).toEqual(event);
   });
 
   it("returns false for incomplete webhook headers or non-success verification", async () => {
-    process.env.PAYPAL_WEBHOOK_ID = "sandbox-webhook-id";
+    process.env.PAYPAL_WEBHOOK_ID = "test-hook";
     const event = { id: "WH-2" };
     const fetcher = vi.fn() as unknown as typeof fetch;
     const incomplete = await verifyPayPalWebhookSignature({

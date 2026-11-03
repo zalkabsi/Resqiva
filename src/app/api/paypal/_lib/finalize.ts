@@ -70,6 +70,40 @@ export async function finalizeCapturedPayment(evidence: VerifiedCapture): Promis
         }
       }
 
+      // Win the reservation state transition before changing shared stock
+      // counters. A concurrent cancellation that changed the reservation to
+      // CANCELLED/EXPIRED makes this compare-and-set fail, so this capture can
+      // never consume units held by a later reservation on the same lot.
+      const reservationClaim = await tx.reservation.updateMany({
+        where: {
+          id: reservation.id,
+          status: reservation.status,
+          ...(reservation.status === "RESERVED" ? { expiresAt: { gt: now } } : {}),
+          ...(recoverableException
+            ? { failureCode: { in: ["CAPTURE_UNCERTAIN", "DATABASE_FINALIZATION_UNCERTAIN"] } }
+            : {}),
+        },
+        data: { status: "PAID", paidAt: now, failureCode: null, failureSummary: null },
+      });
+      if (reservationClaim.count !== 1) throw new FinalizationRaceError();
+
+      const orderClaim = await tx.order.updateMany({
+        where: {
+          id: order.id,
+          status: order.status,
+          paymentStatus: order.paymentStatus,
+        },
+        data: {
+          status: "PAID",
+          paymentStatus: "CAPTURED",
+          paypalCaptureId: evidence.captureId,
+          paidAt: now,
+          paymentErrorCode: null,
+          paymentErrorSummary: null,
+        },
+      });
+      if (orderClaim.count !== 1) throw new FinalizationRaceError();
+
       for (const item of reservation.items) {
         const lot = lotsById.get(item.inventoryLotId)!;
         const changed = await tx.inventoryLot.updateMany({
@@ -105,18 +139,6 @@ export async function finalizeCapturedPayment(evidence: VerifiedCapture): Promis
           },
         },
       });
-      await tx.order.update({
-        where: { id: order.id },
-        data: {
-          status: "PAID",
-          paymentStatus: "CAPTURED",
-          paypalCaptureId: evidence.captureId,
-          paidAt: now,
-          paymentErrorCode: null,
-          paymentErrorSummary: null,
-        },
-      });
-      await tx.reservation.update({ where: { id: reservation.id }, data: { status: "PAID", paidAt: now } });
       await tx.bundle.update({ where: { id: reservation.bundleId }, data: { status: "PAID" } });
       await tx.impactMetric.create({
         data: {
@@ -160,10 +182,13 @@ export async function flagPaymentException(paypalOrderId: string, code: string):
   });
   if (!order || order.status === "PAID" || order.status === "FULFILLED") return;
   await db.$transaction(async (tx) => {
-    const current = await tx.order.findUnique({ where: { id: order.id }, select: { status: true } });
-    if (!current || current.status === "PAID" || current.status === "FULFILLED") return;
-    await tx.order.update({
+    const current = await tx.order.findUnique({
       where: { id: order.id },
+      select: { status: true, paymentStatus: true, reservation: { select: { status: true } } },
+    });
+    if (!current || current.status === "PAID" || current.status === "FULFILLED") return;
+    const orderException = await tx.order.updateMany({
+      where: { id: order.id, status: current.status, paymentStatus: current.paymentStatus },
       data: {
         status: "PAYMENT_EXCEPTION",
         paymentStatus: "UNKNOWN",
@@ -171,13 +196,23 @@ export async function flagPaymentException(paypalOrderId: string, code: string):
         paymentErrorSummary: "PayPal reported or may have completed a capture, but the application could not safely confirm the final order state.",
       },
     });
-    if (order.reservation.status !== "PAID" && order.reservation.status !== "FULFILLED") {
-      await tx.reservation.update({
-        where: { id: order.reservationId },
+    if (orderException.count !== 1) return;
+    if (["RESERVED", "PAYMENT_APPROVED", "PAYMENT_EXCEPTION"].includes(current.reservation.status)) {
+      await tx.reservation.updateMany({
+        where: { id: order.reservationId, status: current.reservation.status },
         data: {
           status: "PAYMENT_EXCEPTION",
           failureCode: /^[A-Z0-9_]{1,64}$/.test(code) ? code : "PAYMENT_UNCERTAIN",
           failureSummary: "Payment status needs reconciliation. Reserved stock was not released.",
+        },
+      });
+    } else if (current.reservation.status === "CANCELLED" || current.reservation.status === "EXPIRED") {
+      // Record the late financial event without reopening a terminal reservation.
+      await tx.reservation.updateMany({
+        where: { id: order.reservationId, status: current.reservation.status },
+        data: {
+          failureCode: /^[A-Z0-9_]{1,64}$/.test(code) ? code : "PAYMENT_UNCERTAIN",
+          failureSummary: "A payment event arrived after this reservation closed. Inventory was not restored to this order.",
         },
       });
     }
@@ -201,8 +236,8 @@ async function markException(
   reason: string,
   now: Date,
 ) {
-  await tx.order.update({
-    where: { id: orderId },
+  const orderException = await tx.order.updateMany({
+    where: { id: orderId, status: { notIn: ["PAID", "FULFILLED"] } },
     data: {
       status: "PAYMENT_EXCEPTION",
       paymentStatus: "UNKNOWN",
@@ -211,8 +246,15 @@ async function markException(
       lastReconciledAt: now,
     },
   });
-  await tx.reservation.update({
-    where: { id: reservationId },
+  if (orderException.count !== 1) return;
+  await tx.reservation.updateMany({
+    where: { id: reservationId, status: { in: ["RESERVED", "PAYMENT_APPROVED", "PAYMENT_EXCEPTION"] } },
     data: { status: "PAYMENT_EXCEPTION", failureCode: reason, failureSummary: "Payment needs reconciliation; stock was not released." },
   });
+  await tx.reservation.updateMany({
+    where: { id: reservationId, status: { in: ["CANCELLED", "EXPIRED"] } },
+    data: { failureCode: reason, failureSummary: "Capture evidence arrived after the reservation closed; inventory was not restored to this order." },
+  });
 }
+
+class FinalizationRaceError extends Error {}

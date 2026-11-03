@@ -10,10 +10,10 @@ Status is based on evidence from November 3, 2026. “Implemented” means sourc
 - [x] Unknown/partial allergen status is preserved; the optimizer does not treat unknown data as allergy-safe.
 - [x] Price, comparable value, and savings use integer cents and inventory-derived values.
 - [x] No feasible bundle returns a constraint explanation instead of relaxing constraints silently.
-- [x] Merchant can view seeded inventory and orders, edit existing stock and prices, import CSV inventory, and confirm pickup for paid orders. Dashboard load passed; inventory edit/import/pickup were not exercised in E2E.
+- [x] Merchant can view inventory and orders, edit stock/prices without reducing committed units, import CSV to a selected demo store, create/edit demo stores and pickup windows, manually reconcile PayPal status, and confirm pickup for paid orders. E2E created a demo store and pickup window; inventory editing/import and paid-order pickup still lack browser/live-payment coverage.
 - [x] Shopper order-history API and receipt page are implemented; authorization/payload tests pass. No paid receipt exists because live capture is blocked.
 - [x] Clean database setup produced 3 fictional merchants/stores, 45 products, and 6 recipes.
-- [ ] Full merchant account/store setup, pickup-window management, and operator reconciliation actions are not implemented.
+- [x] Demo-store setup, pickup-window CRUD, and manual customer/merchant reconciliation actions are implemented and covered by route/unit tests. Real account signup, authentication, tenant isolation, store deletion, scheduled reconciliation, and refunds are not provided.
 
 ## AI and payments
 
@@ -23,27 +23,27 @@ Status is based on evidence from November 3, 2026. “Implemented” means sourc
 - [x] Server recomputes totals from saved inventory and uses a serializable stock reservation; API smoke verified reserve and exact release counts.
 - [ ] PayPal Sandbox order creation, buyer approval, capture, paid status, and sold-inventory update are not verified. Current OAuth attempt returned `invalid_client`.
 - [x] Cancellation and retry behavior were exercised in the local API smoke. Retry was blocked by credential rejection; it did not create a provider order.
-- [ ] Reservation expiry, concurrent final-unit access, actual webhook delivery/replay, and reconciliation after successful capture plus database failure remain untested.
+- [ ] Reservation expiry and concurrent final-unit access against a real database, actual webhook delivery/replay, and reconciliation after successful capture plus database failure remain untested. Transition and route tests use controlled mocks.
 - [ ] A matching PayPal Sandbox app credential set, Sandbox buyer approval, `PAYPAL_WEBHOOK_ID`, and reachable HTTPS webhook endpoint are required for the remaining live payment checks.
 
 ## Quality and submission
 
 - [x] Clean local Postgres migration/seed and `npm run demo:up` startup verified.
-- [x] `npm run lint`, `npm run typecheck`, `npm test` (40/40), `npm run build`, `npm run smoke:local`, and `npm run e2e:local` passed.
+- [x] `npm run lint`, `npm run typecheck`, `npm test` (163/163 in 19 files), `npm run build`, `npm run smoke:local`, and `npm run e2e:local` passed; see [testing.md](testing.md) for the final run scope.
 - [x] `npm audit --omit=dev` found no production dependency advisories.
 - [ ] Full `npm audit` reports 17 moderate development-tool dependency findings rooted in `minimatch`, with no fix available; a dedicated credential scanner and comprehensive security review remain outstanding.
-- [ ] Public repository publication and visibility of the MIT license in the repository About area are pending explicit owner approval.
-- [ ] Free, unrestricted judge access is not ready: no public demo, and a local AI run requires the configured Fireworks credential.
+- [ ] The user authorized pushing the finished work; publication is pending the final verified push. The public repository must also show the MIT license in its About area as required by the rules.
+- [ ] Free, unrestricted judge access from Dec 1, 2026 at 2:00 p.m. Pacific to Dec 15, 2026 at 8:00 a.m. Pacific is not ready: no public demo, and a local AI run requires the configured Fireworks credential.
 - [ ] Public YouTube demo under three minutes is not recorded or uploaded.
 - [x] Official rules and deadline were rechecked November 3, 2026; final submission content still needs owner review.
 - [ ] Hosted demo is unverified and not deployed. Hosting is optional under official rules when complete local run instructions work.
-- [ ] No push, public deploy, video upload, or Devpost submission has been made. Each remains gated on explicit owner approval.
+- [ ] No push has been made yet. The user authorized pushing the finished source; public deployment, video upload, and Devpost submission remain gated on separate explicit approval.
 
 ## Exact external blockers
 
 - **PayPal account:** the currently bound Sandbox client ID/secret pair is rejected (`invalid_client`). Replace them in the managed environment with a matching pair from the same Sandbox app; do not send values in chat.
 - **Buyer account:** a Sandbox buyer must approve the browser checkout after the merchant app credential issue is fixed.
-- **Network policy:** restricted egress is enforced and allows `api-m.sandbox.paypal.com` and `api.fireworks.ai`. It does not list `www.paypal.com`, which the browser PayPal JavaScript SDK may need. Add that host only through the managed environment's approved network configuration; no bypass was attempted.
+- **Network policy:** restricted egress is enforced and allows `api-m.sandbox.paypal.com` and `api.fireworks.ai`. It does not list `www.paypal.com` (browser SDK) or `www.sandbox.paypal.com` (buyer approval page). Add those hosts only through the managed environment's approved network configuration; no bypass was attempted.
 - **Webhook:** no webhook ID is configured and there is no public HTTPS endpoint for PayPal delivery.
 - **Judge access:** a stable publicly accessible demo or an approved plan for free, unrestricted judge access is still needed. Local setup is reproducible but needs a Fireworks key to use AI.
-- **Publishing approvals:** owner approval is still required to push the repository, deploy publicly, upload a video, and submit on Devpost.
+- **Publishing approvals:** push is authorized and remains to be completed. Public deployment, video upload, and Devpost submission still require explicit approval.

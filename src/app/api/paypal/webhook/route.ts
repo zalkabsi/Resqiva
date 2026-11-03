@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
+import { readTextLimited, RequestReadError } from "@/lib/request";
 import {
   getPayPalOrder,
   paypalWebhookHeaders,
@@ -13,11 +14,17 @@ import { verifyCompletedCapture } from "@/app/api/paypal/_lib/capture-validation
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
+const MAX_WEBHOOK_BYTES = 1_000_000;
 
 export async function POST(request: Request) {
-  const rawBody = await request.text();
-  if (rawBody.length > 1_000_000) {
-    return NextResponse.json({ error: "Webhook body exceeds the allowed size." }, { status: 413 });
+  let rawBody: string;
+  try {
+    rawBody = await readTextLimited(request, MAX_WEBHOOK_BYTES);
+  } catch (error) {
+    if (error instanceof RequestReadError && error.status === 413) {
+      return NextResponse.json({ error: "Webhook body exceeds the allowed size." }, { status: 413 });
+    }
+    return NextResponse.json({ error: "Webhook body could not be read." }, { status: 400 });
   }
   let event: unknown;
   try {

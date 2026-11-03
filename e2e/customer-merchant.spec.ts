@@ -27,4 +27,26 @@ test("shopper plans from live inventory and merchant workspace loads", async ({ 
   await expect(page.getByRole("heading", { name: "Your store snapshot" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Inventory snapshot" })).toBeVisible();
   await expect(page.locator(".inventory-table tbody tr").first()).toBeVisible();
+
+  const storeName = `E2E Demo Store ${Date.now()}`;
+  await page.getByRole("button", { name: "Add demo store" }).click();
+  const storeForm = page.locator("form").filter({ has: page.getByLabel("Store name") }).last();
+  await storeForm.getByLabel("Store name").fill(storeName);
+  await storeForm.getByLabel("City").fill("Riyadh");
+  await storeForm.getByLabel("Timezone").fill("UTC");
+  await storeForm.getByLabel("Pickup address").fill("100 Fictional Market Road");
+  await storeForm.getByRole("button", { name: "Create demo store" }).click();
+  await expect(page.getByText(storeName, { exact: true })).toBeVisible();
+
+  const storeCard = page.locator("article").filter({ hasText: storeName }).first();
+  await storeCard.getByRole("button", { name: "Add pickup window" }).click();
+  const startsAtMs = Date.now() + 72 * 60 * 60 * 1_000;
+  const inputDate = (timestamp: number) => new Date(timestamp).toISOString().slice(0, 16);
+  await page.getByLabel(`New pickup start for ${storeName}`).fill(inputDate(startsAtMs));
+  await page.getByLabel(`New pickup end for ${storeName}`).fill(inputDate(startsAtMs + 2 * 60 * 60 * 1_000));
+  await page.getByLabel(`New reservation cutoff for ${storeName}`).fill(inputDate(startsAtMs - 60 * 60 * 1_000));
+  await page.getByLabel(`New pickup capacity for ${storeName}`).fill("120");
+  await storeCard.getByRole("button", { name: "Create pickup window" }).click();
+  await expect(page.getByText(`Pickup window for ${storeName} was created and confirmed by the server.`)).toBeVisible();
+  await expect(page.getByText(`${storeName} pickup`, { exact: false })).toBeVisible();
 });

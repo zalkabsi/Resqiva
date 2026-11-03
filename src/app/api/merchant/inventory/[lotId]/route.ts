@@ -2,8 +2,12 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getDb } from "@/lib/db";
 import { authorizeDemoMerchant, sameOriginRequired } from "@/lib/merchant-auth";
+import { inventoryLotVersionWhere, quantityPreservesCommittedUnits } from "@/lib/inventory-lot-rules";
+import { checkMerchantMutationLimit, merchantRateLimitResponse } from "@/lib/merchant-mutation-limit";
+import { readJsonLimited, RequestReadError } from "@/lib/request";
 
 export const runtime = "nodejs";
+const MAX_REQUEST_BYTES = 4 * 1024;
 
 const updateSchema = z.object({
   quantityOnHand: z.number().int().min(0).max(10_000).optional(),
@@ -25,12 +29,15 @@ export async function PATCH(request: Request, context: RouteContext) {
   if (!/^[A-Za-z0-9_-]{8,128}$/.test(lotId)) {
     return NextResponse.json({ error: "Inventory reference is invalid." }, { status: 400 });
   }
+  const rateLimit = checkMerchantMutationLimit(authorization.context.userId, "inventory-patch", 30);
+  if (!rateLimit.allowed) return merchantRateLimitResponse("inventory-patch", rateLimit.retryAfterSeconds);
 
   let body: unknown;
   try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: "Request body must be valid JSON." }, { status: 400 });
+    body = await readJsonLimited(request, MAX_REQUEST_BYTES);
+  } catch (error) {
+    const tooLarge = error instanceof RequestReadError && error.status === 413;
+    return NextResponse.json({ error: tooLarge ? "Request body is too large." : "Request body must be valid JSON." }, { status: tooLarge ? 413 : 400 });
   }
   const parsed = updateSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: "Inventory changes are invalid." }, { status: 400 });
@@ -39,7 +46,11 @@ export async function PATCH(request: Request, context: RouteContext) {
     const db = getDb();
     const { merchantId, userId } = authorization.context;
     const lot = await db.inventoryLot.findFirst({
-      where: { id: lotId, store: { merchantId, isDemo: true }, product: { isDemo: true } },
+      where: {
+        id: lotId,
+        store: { merchantId, isDemo: true },
+        product: { merchantId, isDemo: true },
+      },
       select: {
         id: true,
         storeId: true,
@@ -57,7 +68,7 @@ export async function PATCH(request: Request, context: RouteContext) {
     const nextQuantity = parsed.data.quantityOnHand ?? lot.quantityOnHand;
     const nextDiscount = parsed.data.discountedPriceCents ?? lot.discountedPriceCents;
     const nextOriginal = parsed.data.originalPriceCents ?? lot.originalPriceCents;
-    if (nextQuantity < lot.quantityReserved + lot.quantitySold) {
+    if (!quantityPreservesCommittedUnits(nextQuantity, lot.quantityReserved, lot.quantitySold)) {
       return NextResponse.json({ error: "Quantity cannot be lower than units already reserved or sold." }, { status: 409 });
     }
     if (nextDiscount > nextOriginal) {
@@ -85,21 +96,20 @@ export async function PATCH(request: Request, context: RouteContext) {
     }
 
     const updated = await db.$transaction(async (tx) => {
+      const data = {
+        ...(parsed.data.quantityOnHand !== undefined ? { quantityOnHand: nextQuantity } : {}),
+        ...(parsed.data.discountedPriceCents !== undefined ? { discountedPriceCents: nextDiscount } : {}),
+        ...(parsed.data.originalPriceCents !== undefined ? { originalPriceCents: nextOriginal } : {}),
+        ...(parsed.data.expiresAt !== undefined ? { expiresAt: nextExpiresAt } : {}),
+        ...(parsed.data.sellable !== undefined || parsed.data.expiresAt === null ? { sellable } : {}),
+      };
       const result = await tx.inventoryLot.updateMany({
         where: {
-          id: lot.id,
+          ...inventoryLotVersionWhere(lot),
           store: { merchantId, isDemo: true },
-          quantityOnHand: lot.quantityOnHand,
-          quantityReserved: lot.quantityReserved,
-          quantitySold: lot.quantitySold,
+          product: { merchantId, isDemo: true },
         },
-        data: {
-          quantityOnHand: nextQuantity,
-          discountedPriceCents: nextDiscount,
-          originalPriceCents: nextOriginal,
-          expiresAt: nextExpiresAt,
-          sellable,
-        },
+        data,
       });
       if (result.count !== 1) return null;
       await tx.auditEvent.create({

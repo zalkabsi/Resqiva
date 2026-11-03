@@ -7,6 +7,16 @@ export class RequestReadError extends Error {
 
 /** Read bounded JSON without buffering an untrusted, arbitrarily large body. */
 export async function readJsonLimited(request: Request, maxBytes: number): Promise<unknown> {
+  const text = await readTextLimited(request, maxBytes);
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    throw new RequestReadError(400, "Request body must be valid JSON.");
+  }
+}
+
+/** Read bounded UTF-8 text without buffering an untrusted, arbitrarily large body. */
+export async function readTextLimited(request: Request, maxBytes: number): Promise<string> {
   const contentLength = Number(request.headers.get("content-length"));
   if (Number.isFinite(contentLength) && contentLength > maxBytes) {
     throw new RequestReadError(413, "Request body is too large.");
@@ -39,8 +49,8 @@ export async function readJsonLimited(request: Request, maxBytes: number): Promi
       bytes.set(chunk, offset);
       offset += chunk.byteLength;
     }
-    return JSON.parse(new TextDecoder().decode(bytes)) as unknown;
+    return new TextDecoder().decode(bytes);
   } catch {
-    throw new RequestReadError(400, "Request body must be valid JSON.");
+    throw new RequestReadError(400, "Request body could not be decoded.");
   }
 }

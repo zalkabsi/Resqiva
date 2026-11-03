@@ -2,12 +2,14 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { isSameOriginMutation, readSessionFromRequest } from "@/lib/auth";
 import { getDb } from "@/lib/db";
+import { readJsonLimited, RequestReadError } from "@/lib/request";
 import { createPayPalOrder, getPayPalOrder, PayPalApiError, paypalApprovalUrl } from "@/lib/paypal";
 import { finalizeCapturedPayment, flagPaymentException } from "@/app/api/paypal/_lib/finalize";
 import { verifyCompletedCapture, verifyPayPalOrderAmount } from "@/app/api/paypal/_lib/capture-validation";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
+const MAX_REQUEST_BYTES = 4 * 1024;
 
 const requestSchema = z.object({
   reservationId: z.string().min(1).max(128),
@@ -24,8 +26,11 @@ export async function POST(request: Request) {
 
   let body: unknown;
   try {
-    body = await request.json();
-  } catch {
+    body = await readJsonLimited(request, MAX_REQUEST_BYTES);
+  } catch (error) {
+    if (error instanceof RequestReadError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
     return NextResponse.json({ error: "Request body must be valid JSON." }, { status: 400 });
   }
   const parsed = requestSchema.safeParse(body);
@@ -145,7 +150,23 @@ export async function POST(request: Request) {
         return NextResponse.json({ status: "PAYMENT_EXCEPTION", error: "PayPal shows a completed payment that could not be matched to reserved inventory. Reconciliation is required." }, { status: 409 });
       }
       const approvalUrl = paypalApprovalUrl(remoteOrder);
-      if (approvalUrl) return NextResponse.json({ paypalOrderId: order.paypalOrderId, approvalUrl, status: "PENDING" });
+      if (approvalUrl) {
+        const persisted = await persistCreatedPayPalOrder(db, {
+          orderId: order.id,
+          reservationId: reservation.id,
+          userId: session.userId,
+          createRequestId: order.createRequestId ?? createRequestId,
+          amountCents,
+          paypalOrder: remoteOrder,
+        });
+        if (persisted !== "READY") {
+          return NextResponse.json(
+            { error: "The reservation changed while checkout status was being checked. No approval link was issued; the PayPal order remains saved for reconciliation." },
+            { status: 409 },
+          );
+        }
+        return NextResponse.json({ paypalOrderId: order.paypalOrderId, approvalUrl, status: "PENDING" });
+      }
       return NextResponse.json({ error: "PayPal did not provide an approval link. The order is not paid." }, { status: 502 });
     } catch {
       return NextResponse.json({ error: "The existing PayPal Sandbox order could not be checked. Retry shortly." }, { status: 502 });
@@ -174,49 +195,28 @@ export async function POST(request: Request) {
     if (!matching.valid) {
       return NextResponse.json({ error: "PayPal created an order that did not match the reservation. It was not sent for approval." }, { status: 502 });
     }
+    const persisted = await persistCreatedPayPalOrder(db, {
+      orderId: order.id,
+      reservationId: reservation.id,
+      userId: session.userId,
+      createRequestId,
+      amountCents,
+      paypalOrder,
+    });
+    if (persisted !== "READY") {
+      return NextResponse.json(
+        { error: "The reservation changed while checkout was being prepared. No approval link was issued; the PayPal order reference was saved for reconciliation." },
+        { status: 409 },
+      );
+    }
     const approvalUrl = paypalApprovalUrl(paypalOrder);
     if (!approvalUrl) {
-      await db.order.update({
-        where: { id: order.id },
+      await db.order.updateMany({
+        where: { id: order.id, paypalOrderId: paypalOrder.id, status: "PENDING", paymentStatus: "CREATED" },
         data: { paymentErrorCode: "APPROVAL_LINK_MISSING", paymentErrorSummary: "PayPal did not return an approved Sandbox checkout URL." },
       });
       return NextResponse.json({ error: "PayPal did not return an approval link. The reservation is unpaid." }, { status: 502 });
     }
-
-    await db.$transaction(async (tx) => {
-      const wasAssigned = await tx.order.updateMany({
-        where: { id: order.id, paypalOrderId: null },
-        data: { paypalOrderId: paypalOrder.id, status: "PENDING", paymentStatus: "CREATED", paymentErrorCode: null, paymentErrorSummary: null },
-      });
-      const current = await tx.order.findUnique({ where: { id: order.id }, select: { paypalOrderId: true } });
-      if (current?.paypalOrderId !== paypalOrder.id) throw new Error("PAYPAL_ORDER_LINK_CONFLICT");
-      await tx.paypalTransaction.upsert({
-        where: { providerTransactionId: paypalOrder.id },
-        update: {},
-        create: {
-          orderId: order.id,
-          type: "ORDER_CREATE",
-          providerTransactionId: paypalOrder.id,
-          requestId: createRequestId,
-          status: "CREATED",
-          amountCents,
-          currency: "USD",
-          responsePayload: { paypalOrderId: paypalOrder.id, status: paypalOrder.status, amountCents, currency: "USD" },
-        },
-      });
-      if (wasAssigned.count === 1) {
-        await tx.auditEvent.create({
-          data: {
-            actorUserId: session.userId,
-            actorType: "CUSTOMER",
-            action: "PAYPAL_ORDER_CREATED",
-            entityType: "Order",
-            entityId: order.id,
-            metadata: { amountCents, currency: "USD" },
-          },
-        });
-      }
-    });
     return NextResponse.json({ paypalOrderId: paypalOrder.id, approvalUrl, status: "PENDING" });
   } catch (error) {
     if (error instanceof PayPalApiError && error.code?.toLowerCase() === "invalid_client") {
@@ -227,6 +227,135 @@ export async function POST(request: Request) {
       { status: 502 },
     );
   }
+}
+
+type PersistCreatedPayPalOrderInput = {
+  orderId: string;
+  reservationId: string;
+  userId: string;
+  createRequestId: string;
+  amountCents: number;
+  paypalOrder: { id: string; status: string };
+};
+
+type PersistCreatedPayPalOrderResult = "READY" | "NOT_READY" | "NOT_FOUND";
+
+/**
+ * Save provider evidence without ever reopening a reservation/order that
+ * cancellation or expiry already closed. The reservation compare-and-set is
+ * the linearization point for issuing the approval link.
+ */
+async function persistCreatedPayPalOrder(
+  db: ReturnType<typeof getDb>,
+  input: PersistCreatedPayPalOrderInput,
+): Promise<PersistCreatedPayPalOrderResult> {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await db.$transaction(async (tx) => {
+        const reservation = await tx.reservation.findUnique({
+          where: { id: input.reservationId },
+          select: { id: true, status: true, expiresAt: true },
+        });
+        const order = await tx.order.findUnique({
+          where: { id: input.orderId },
+          select: { id: true, status: true, paymentStatus: true, paypalOrderId: true },
+        });
+        if (!reservation || !order) return "NOT_FOUND" as const;
+
+        const active = reservation.status === "RESERVED"
+          && reservation.expiresAt > new Date()
+          && order.status === "PENDING"
+          && order.paymentStatus === "CREATED"
+          && (!order.paypalOrderId || order.paypalOrderId === input.paypalOrder.id);
+
+        let reservationClaimed = false;
+        if (active) {
+          const claim = await tx.reservation.updateMany({
+            where: { id: reservation.id, status: "RESERVED", expiresAt: { gt: new Date() } },
+            data: { status: "RESERVED" },
+          });
+          reservationClaimed = claim.count === 1;
+        }
+
+        let linked = order.paypalOrderId === input.paypalOrder.id;
+        let newlyLinked = false;
+        if (!order.paypalOrderId) {
+          if (active && reservationClaimed) {
+            const assignment = await tx.order.updateMany({
+              where: {
+                id: order.id,
+                paypalOrderId: null,
+                status: "PENDING",
+                paymentStatus: "CREATED",
+              },
+              data: { paypalOrderId: input.paypalOrder.id },
+            });
+            newlyLinked = assignment.count === 1;
+            linked = newlyLinked;
+          }
+          if (!linked) {
+            // Preserve the remote order reference for operator reconciliation,
+            // but never restore PENDING/CREATED after a cancellation or expiry.
+            const evidenceLink = await tx.order.updateMany({
+              where: { id: order.id, paypalOrderId: null },
+              data: { paypalOrderId: input.paypalOrder.id },
+            });
+            newlyLinked = evidenceLink.count === 1;
+            linked = newlyLinked;
+          }
+        }
+
+        await tx.paypalTransaction.upsert({
+          where: { providerTransactionId: input.paypalOrder.id },
+          update: {},
+          create: {
+            orderId: order.id,
+            type: "ORDER_CREATE",
+            providerTransactionId: input.paypalOrder.id,
+            requestId: order.paypalOrderId && order.paypalOrderId !== input.paypalOrder.id ? null : input.createRequestId,
+            status: "CREATED",
+            amountCents: input.amountCents,
+            currency: "USD",
+            responsePayload: {
+              paypalOrderId: input.paypalOrder.id,
+              status: input.paypalOrder.status,
+              amountCents: input.amountCents,
+              currency: "USD",
+            },
+          },
+        });
+
+        const ready = active && reservationClaimed && linked;
+        if (newlyLinked) {
+          await tx.auditEvent.create({
+            data: {
+              actorUserId: input.userId,
+              actorType: "CUSTOMER",
+              action: ready ? "PAYPAL_ORDER_CREATED" : "PAYPAL_ORDER_CREATED_WITHOUT_APPROVAL",
+              entityType: "Order",
+              entityId: order.id,
+              metadata: {
+                amountCents: input.amountCents,
+                currency: "USD",
+                reservationStatus: reservation.status,
+                orderStatus: order.status,
+              },
+            },
+          });
+        }
+        return ready ? "READY" as const : "NOT_READY" as const;
+      }, { isolationLevel: "Serializable" });
+    } catch (error) {
+      if (!isSerializationConflict(error) || attempt >= 2) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 15 * (attempt + 1)));
+    }
+  }
+}
+
+function isSerializationConflict(error: unknown): boolean {
+  if (typeof error !== "object" || error === null) return false;
+  const code = (error as { code?: unknown }).code;
+  return code === "P2034" || code === "40001";
 }
 
 function isUniqueConflict(error: unknown): boolean {

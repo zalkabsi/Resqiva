@@ -5,9 +5,12 @@ import { getDb } from "@/lib/db";
 import { capturePayPalOrder, getPayPalOrder, PayPalApiError } from "@/lib/paypal";
 import { finalizeCapturedPayment, flagPaymentException, pickupReference } from "@/app/api/paypal/_lib/finalize";
 import { verifyCompletedCapture, verifyPayPalOrderAmount } from "@/app/api/paypal/_lib/capture-validation";
+import { claimReservationForCapture } from "@/lib/reservations";
+import { readJsonLimited, RequestReadError } from "@/lib/request";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
+const MAX_REQUEST_BYTES = 4 * 1024;
 
 const requestSchema = z.object({ reservationId: z.string().min(1).max(128) }).strict();
 
@@ -24,9 +27,10 @@ export async function POST(request: Request, context: RouteContext) {
 
   let body: unknown;
   try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: "Request body must be valid JSON." }, { status: 400 });
+    body = await readJsonLimited(request, MAX_REQUEST_BYTES);
+  } catch (error) {
+    const tooLarge = error instanceof RequestReadError && error.status === 413;
+    return NextResponse.json({ error: tooLarge ? "Request body is too large." : "Request body must be valid JSON." }, { status: tooLarge ? 413 : 400 });
   }
   const parsed = requestSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: "Provide the reservation reference returned by Resqiva." }, { status: 400 });
@@ -110,23 +114,19 @@ export async function POST(request: Request, context: RouteContext) {
     return NextResponse.json({ error: "The reservation no longer holds all of its stock. Capture was not requested and the order needs review." }, { status: 409 });
   }
 
+  let claim: Awaited<ReturnType<typeof claimReservationForCapture>>;
+  try {
+    claim = await claimReservationForCapture(order.id, reservation.id);
+  } catch {
+    // No PayPal capture request is sent unless the local compare-and-set claim
+    // completes. A timeout here is safe to retry with the same idempotency key.
+    return NextResponse.json({ error: "The reservation could not be claimed for capture. No capture was requested; refresh the order status before retrying." }, { status: 503 });
+  }
+  if (claim !== "claimed") {
+    return NextResponse.json({ error: "The reservation was cancelled, expired, or changed before capture could start. No capture was requested." }, { status: claim === "not_found" ? 404 : 409 });
+  }
+
   const captureRequestId = order.captureRequestId ?? `resqiva-capture-${order.id}`;
-  await db.$transaction([
-    db.order.update({
-      where: { id: order.id },
-      data: {
-        status: "PAYMENT_APPROVED",
-        paymentStatus: "APPROVED",
-        captureRequestId,
-        paymentErrorCode: null,
-        paymentErrorSummary: null,
-      },
-    }),
-    db.reservation.update({
-      where: { id: reservation.id },
-      data: { status: "PAYMENT_APPROVED", paymentApprovedAt: reservation.paymentApprovedAt ?? new Date() },
-    }),
-  ]);
 
   let captured;
   try {
@@ -147,8 +147,13 @@ export async function POST(request: Request, context: RouteContext) {
         return finalizationResponse(await finalizeCapturedPayment(verification.evidence));
       }
       if (error instanceof PayPalApiError && error.status >= 400 && error.status < 500) {
-        await db.order.update({
-          where: { id: order.id },
+        await db.order.updateMany({
+          where: {
+            id: order.id,
+            status: "PAYMENT_APPROVED",
+            paymentStatus: "APPROVED",
+            paymentErrorCode: "CAPTURE_IN_PROGRESS",
+          },
           data: { paymentErrorCode: error.code ?? "CAPTURE_REJECTED", paymentErrorSummary: "PayPal rejected this capture attempt; check the provider order before retrying." },
         });
         return NextResponse.json({ error: "PayPal did not complete the capture. The order is not marked paid; retry or cancel after checking its status." }, { status: 502 });

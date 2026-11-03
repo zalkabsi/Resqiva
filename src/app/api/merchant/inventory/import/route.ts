@@ -2,13 +2,15 @@ import { NextResponse } from "next/server";
 import { AllergenDataStatus, ExpirationType } from "@/generated/prisma/client";
 import { getDb } from "@/lib/db";
 import { authorizeDemoMerchant, sameOriginRequired } from "@/lib/merchant-auth";
+import { inventoryLotVersionWhere, quantityPreservesCommittedUnits } from "@/lib/inventory-lot-rules";
+import { checkMerchantMutationLimit, merchantRateLimitResponse } from "@/lib/merchant-mutation-limit";
 
 export const runtime = "nodejs";
 
 const MAX_BYTES = 256 * 1024;
 const MAX_ROWS = 500;
-const REQUIRED_HEADERS = ["sku", "name", "category", "quantity", "pricecents", "originalpricecents", "expiresat"];
-const OPTIONAL_HEADERS = ["ingredients", "allergens", "allergendatastatus", "dietarytags", "expirationtype"];
+const REQUIRED_HEADERS = ["sku", "name", "category", "quantity", "pricecents", "originalpricecents", "expiresat", "expirationtype"];
+const OPTIONAL_HEADERS = ["ingredients", "allergens", "allergendatastatus", "dietarytags"];
 const ALLOWED_HEADERS = new Set([...REQUIRED_HEADERS, ...OPTIONAL_HEADERS]);
 const VALID_DIETARY_TAGS = new Set(["VEGETARIAN", "VEGAN", "GLUTEN_FREE", "DAIRY_FREE", "HALAL", "LOW_SODIUM"]);
 
@@ -19,7 +21,7 @@ type InventoryRow = {
   quantity: number;
   priceCents: number;
   originalPriceCents: number;
-  expiresAt: Date | null;
+  expiresAt: Date;
   ingredients: string[];
   allergens: string[];
   allergenDataStatus: AllergenDataStatus;
@@ -32,6 +34,8 @@ export async function POST(request: Request) {
   if (originError) return originError;
   const authorization = await authorizeDemoMerchant(request);
   if (!authorization.ok) return authorization.response;
+  const rateLimit = checkMerchantMutationLimit(authorization.context.userId, "inventory-import", 5);
+  if (!rateLimit.allowed) return merchantRateLimitResponse("inventory-import", rateLimit.retryAfterSeconds);
 
   const contentType = request.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase();
   if (contentType !== "text/csv" && contentType !== "application/csv") {
@@ -72,12 +76,14 @@ export async function POST(request: Request) {
     const imported = await db.$transaction(async (tx) => {
       let count = 0;
       for (const row of parsed.rows) {
-        const existing = await tx.product.findUnique({ where: { sku: row.sku }, select: { id: true, merchantId: true } });
+        if (row.expiresAt <= new Date()) throw new CsvConflictError("CSV expiry must be in the future when the import is saved.");
+        const existing = await tx.product.findUnique({ where: { sku: row.sku }, select: { id: true, merchantId: true, isDemo: true } });
         if (existing && existing.merchantId !== merchantId) throw new CsvConflictError("A SKU in this file belongs to a different merchant.");
+        if (existing && !existing.isDemo) throw new CsvConflictError("A SKU in this file belongs to a non-demo product and cannot be imported.");
 
         const product = existing
           ? await tx.product.update({
-              where: { id: existing.id },
+              where: { id: existing.id, merchantId, isDemo: true },
               data: {
                 name: row.name,
                 category: row.category,
@@ -86,7 +92,6 @@ export async function POST(request: Request) {
                 knownAllergens: row.allergens,
                 allergenDataStatus: row.allergenDataStatus,
                 dietaryTags: row.dietaryTags,
-                isDemo: true,
                 isActive: true,
               },
               select: { id: true },
@@ -109,34 +114,65 @@ export async function POST(request: Request) {
             });
 
         const lotCode = `CSV-${row.sku}`;
-        const sellable = row.expiresAt !== null
-          && row.expiresAt > new Date()
-          && row.expirationType !== ExpirationType.UNKNOWN;
-        await tx.inventoryLot.upsert({
-          where: { storeId_productId_lotCode: { storeId: store.id, productId: product.id, lotCode } },
-          create: {
-            storeId: store.id,
-            productId: product.id,
-            lotCode,
-            quantityOnHand: row.quantity,
-            discountedPriceCents: row.priceCents,
-            originalPriceCents: row.originalPriceCents,
-            currency: "USD",
-            expiresAt: row.expiresAt,
-            expirationType: row.expirationType,
-            sellable,
-            notes: "Fictional demo inventory imported from merchant CSV.",
-          },
-          update: {
-            quantityOnHand: row.quantity,
-            discountedPriceCents: row.priceCents,
-            originalPriceCents: row.originalPriceCents,
-            expiresAt: row.expiresAt,
-            expirationType: row.expirationType,
-            sellable,
-            notes: "Fictional demo inventory imported from merchant CSV.",
+        const sellable = true;
+        const lotWhere = { storeId_productId_lotCode: { storeId: store.id, productId: product.id, lotCode } };
+        const existingLot = await tx.inventoryLot.findUnique({
+          where: lotWhere,
+          select: {
+            id: true,
+            quantityOnHand: true,
+            quantityReserved: true,
+            quantitySold: true,
+            discountedPriceCents: true,
+            originalPriceCents: true,
+            expiresAt: true,
+            sellable: true,
           },
         });
+
+        if (!existingLot) {
+          await tx.inventoryLot.create({
+            data: {
+              storeId: store.id,
+              productId: product.id,
+              lotCode,
+              quantityOnHand: row.quantity,
+              discountedPriceCents: row.priceCents,
+              originalPriceCents: row.originalPriceCents,
+              currency: "USD",
+              expiresAt: row.expiresAt,
+              expirationType: row.expirationType,
+              sellable,
+              notes: "Fictional demo inventory imported from merchant CSV.",
+            },
+          });
+        } else {
+          if (!quantityPreservesCommittedUnits(row.quantity, existingLot.quantityReserved, existingLot.quantitySold)) {
+            throw new CsvConflictError("Imported quantity cannot be lower than units already reserved or sold.");
+          }
+          const updated = await tx.inventoryLot.updateMany({
+            where: {
+              ...inventoryLotVersionWhere(existingLot),
+              storeId: store.id,
+              productId: product.id,
+              lotCode,
+              store: { merchantId, isDemo: true },
+              product: { merchantId, isDemo: true },
+            },
+            data: {
+              quantityOnHand: row.quantity,
+              discountedPriceCents: row.priceCents,
+              originalPriceCents: row.originalPriceCents,
+              expiresAt: row.expiresAt,
+              expirationType: row.expirationType,
+              sellable,
+              notes: "Fictional demo inventory imported from merchant CSV.",
+            },
+          });
+          if (updated.count !== 1) {
+            throw new CsvConflictError("Inventory changed while this CSV was importing. Refresh stock and retry.");
+          }
+        }
         count += 1;
       }
 
@@ -228,14 +264,13 @@ function parseInventoryCsv(text: string): { ok: true; rows: InventoryRow[] } | {
     }
 
     const expiryText = value("expiresat");
-    let expiresAt: Date | null = null;
-    if (expiryText) {
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(expiryText)) return { ok: false, error: "Expiry dates must use YYYY-MM-DD format." };
-      expiresAt = new Date(`${expiryText}T23:59:59.999Z`);
-      if (!Number.isFinite(expiresAt.getTime()) || expiresAt.toISOString().slice(0, 10) !== expiryText) {
-        return { ok: false, error: "CSV contains an invalid calendar expiry date." };
-      }
+    if (!expiryText) return { ok: false, error: "CSV expiry date is required for a sellable listing." };
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(expiryText)) return { ok: false, error: "Expiry dates must use YYYY-MM-DD format." };
+    const expiresAt = new Date(`${expiryText}T23:59:59.999Z`);
+    if (!Number.isFinite(expiresAt.getTime()) || expiresAt.toISOString().slice(0, 10) !== expiryText) {
+      return { ok: false, error: "CSV contains an invalid calendar expiry date." };
     }
+    if (expiresAt <= new Date()) return { ok: false, error: "CSV expiry date must be in the future for a sellable listing." };
 
     const ingredients = splitList(value("ingredients"));
     const allergens = splitList(value("allergens"));
@@ -247,12 +282,13 @@ function parseInventoryCsv(text: string): { ok: true; rows: InventoryRow[] } | {
       ? requestedStatus as AllergenDataStatus
       : AllergenDataStatus.UNKNOWN;
     const requestedExpirationType = value("expirationtype").toUpperCase();
-    if (requestedExpirationType && !Object.values(ExpirationType).includes(requestedExpirationType as ExpirationType)) {
+    if (!requestedExpirationType || !Object.values(ExpirationType).includes(requestedExpirationType as ExpirationType)) {
       return { ok: false, error: "Expiration type must be USE_BY, SELL_BY, BEST_BEFORE, EXPIRATION, or UNKNOWN." };
     }
-    const expirationType = Object.values(ExpirationType).includes(requestedExpirationType as ExpirationType)
-      ? requestedExpirationType as ExpirationType
-      : ExpirationType.UNKNOWN;
+    const expirationType = requestedExpirationType as ExpirationType;
+    if (expirationType === ExpirationType.UNKNOWN) {
+      return { ok: false, error: "A known expiration type is required for a sellable inventory listing." };
+    }
     const dietaryTags = splitList(value("dietarytags")).map((tag) => tag.toUpperCase().replaceAll("-", "_"));
     if (dietaryTags.some((tag) => !VALID_DIETARY_TAGS.has(tag))) {
       return { ok: false, error: "CSV contains an unsupported dietary tag." };
