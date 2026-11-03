@@ -1,6 +1,6 @@
 # PayPal AI Hackathon 2026 submission package draft
 
-**Review state:** Local draft only. This is not ready to submit: PayPal Sandbox credentials are rejected, no buyer-approved capture is verified, there is no hosted judge demo, and the repository/video are not public. Recheck [official rules](https://paypalaihackathon.devpost.com/rules) before use.
+**Review state:** Local draft only. The source repository is public, but this is not ready to submit: PayPal Sandbox credentials are rejected, no buyer-approved capture is verified, there is no hosted judge demo, and the required public video is not recorded. Recheck [official rules](https://paypalaihackathon.devpost.com/rules) before use.
 
 ## Title
 
@@ -38,7 +38,7 @@ Next.js, React, TypeScript, PostgreSQL, Prisma, Fireworks AI, PayPal Sandbox, Zo
 
 ## Submission links (not ready)
 
-- Repository: `https://github.com/zalkabsi/Resqiva` — intended slug; source push is authorized and pending, and public visibility/About license display must be checked after push.
+- Repository: [`zalkabsi/Resqiva` on `work`](https://github.com/zalkabsi/Resqiva/tree/work) — public at commit `465a265`; GitHub detects the MIT license.
 - Hosted demo: none. Render is unverified and is not required by the official rules if complete run instructions work.
 - Public YouTube demo under three minutes: none recorded or uploaded.
 - Local setup: [README.md](../README.md).
@@ -81,5 +81,6 @@ Warm ivory background with a deep-green market basket at center, containing a sh
 - [ ] Configure Sandbox `PAYPAL_WEBHOOK_ID` and verify delivery to a reachable HTTPS endpoint, including duplicate events.
 - [ ] Ensure the managed network policy permits the PayPal browser SDK host through its approved configuration process.
 - [ ] Provide judges free, unrestricted access through the December 1–15 judging period without asking them to supply a Fireworks key.
-- [ ] Obtain explicit owner approval for repository push/publication, public hosting, video upload, and Devpost submission.
+- [x] Push the repository publicly and verify the MIT license is detectable on GitHub.
+- [ ] Obtain separate explicit owner approval for public hosting, video upload, and Devpost submission.
 - [ ] Recheck rules, public URLs, license visibility, test evidence, and video duration immediately before submission.

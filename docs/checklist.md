@@ -31,13 +31,13 @@ Status is based on evidence from November 3, 2026. “Implemented” means sourc
 - [x] Clean local Postgres migration/seed and `npm run demo:up` startup verified.
 - [x] `npm run lint`, `npm run typecheck`, `npm test` (163/163 in 19 files), `npm run build`, `npm run smoke:local`, and `npm run e2e:local` passed; see [testing.md](testing.md) for the final run scope.
 - [x] `npm audit --omit=dev` found no production dependency advisories.
-- [ ] Full `npm audit` reports 17 moderate development-tool dependency findings rooted in `minimatch`, with no fix available; a dedicated credential scanner and comprehensive security review remain outstanding.
-- [ ] The user authorized pushing the finished work; publication is pending the final verified push. The public repository must also show the MIT license in its About area as required by the rules.
+- [ ] Full `npm audit` reports 17 moderate development-tool dependency findings rooted in `minimatch`, with no fix available. A dedicated credential scanner is unavailable, and a formal penetration test remains outstanding; a manual multi-agent source review and staged-file credential-pattern scan found no credentials.
+- [x] Public source is pushed at [`work`](https://github.com/zalkabsi/Resqiva/tree/work), commit `465a265`; the public GitHub page and branch return HTTP 200 and display the detected MIT license.
 - [ ] Free, unrestricted judge access from Dec 1, 2026 at 2:00 p.m. Pacific to Dec 15, 2026 at 8:00 a.m. Pacific is not ready: no public demo, and a local AI run requires the configured Fireworks credential.
 - [ ] Public YouTube demo under three minutes is not recorded or uploaded.
 - [x] Official rules and deadline were rechecked November 3, 2026; final submission content still needs owner review.
 - [ ] Hosted demo is unverified and not deployed. Hosting is optional under official rules when complete local run instructions work.
-- [ ] No push has been made yet. The user authorized pushing the finished source; public deployment, video upload, and Devpost submission remain gated on separate explicit approval.
+- [x] Pushed `work` to `origin` after the user authorized it. Public deployment, video upload, and Devpost submission remain gated on separate explicit approval.
 
 ## Exact external blockers
 
@@ -46,4 +46,4 @@ Status is based on evidence from November 3, 2026. “Implemented” means sourc
 - **Network policy:** restricted egress is enforced and allows `api-m.sandbox.paypal.com` and `api.fireworks.ai`. It does not list `www.paypal.com` (browser SDK) or `www.sandbox.paypal.com` (buyer approval page). Add those hosts only through the managed environment's approved network configuration; no bypass was attempted.
 - **Webhook:** no webhook ID is configured and there is no public HTTPS endpoint for PayPal delivery.
 - **Judge access:** a stable publicly accessible demo or an approved plan for free, unrestricted judge access is still needed. Local setup is reproducible but needs a Fireworks key to use AI.
-- **Publishing approvals:** push is authorized and remains to be completed. Public deployment, video upload, and Devpost submission still require explicit approval.
+- **Publishing approvals:** source push is complete. Public deployment, video upload, and Devpost submission still require explicit approval.

@@ -12,7 +12,7 @@ All merchants, stores, products, and pickup locations in the seed data are ficti
 - The app has a deterministic meal optimizer, transactional stock reservations, merchant inventory editing and CSV import, demo-store and pickup-window management, order management, and customer/merchant payment-reconciliation controls. PayPal Sandbox routes and webhook verification are implemented.
 - Customer order history and a receipt page are included; a receipt shows paid only after server-verified capture.
 - A successful PayPal Sandbox order, buyer approval, and capture have **not** been verified. The currently configured Sandbox credentials were rejected by OAuth (`invalid_client`). A Sandbox buyer account is also needed for approval.
-- No hosted demo is deployed, and this repository has not been published. A public YouTube demo and Devpost submission have not been made.
+- The source is public on GitHub at [`work`](https://github.com/zalkabsi/Resqiva/tree/work); GitHub detects the MIT license. No hosted demo is deployed, and a public YouTube demo and Devpost submission have not been made.
 - Lint, type-check, 163 unit/route tests, production build, live API smoke, clean local setup, and one browser E2E test passed. Exact scope and PayPal blockers are recorded in [`docs/testing.md`](docs/testing.md).
 
 ## Local setup

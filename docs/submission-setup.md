@@ -1,6 +1,6 @@
 # Submission setup
 
-**Status:** Materials are prepared locally. The user authorized pushing the finished source; no push has been made yet. No deployment, video upload, or Devpost submission has been made.
+**Status:** Source is public on GitHub at [`work`](https://github.com/zalkabsi/Resqiva/tree/work), commit `465a265`; GitHub detects the MIT license. No deployment, video upload, or Devpost submission has been made.
 
 ## Official requirements checked November 3, 2026
 
@@ -20,7 +20,7 @@ See [submission-package.md](submission-package.md) for draft title, pitch, proje
 
 ## Current submission links
 
-- **Repository:** `https://github.com/zalkabsi/Resqiva` is the intended slug. It was empty during the initial check. Local source and an MIT license now exist; push is authorized and pending. Verify the repository is public and the license appears in its About area after push.
+- **Repository:** [`zalkabsi/Resqiva`](https://github.com/zalkabsi/Resqiva/tree/work) is public on branch `work` at `465a265`. The root page serves the pushed commit and detects the MIT license.
 - **Hosted demo:** None. Render remains a proposal only.
 - **Video:** None recorded or uploaded.
 - **Testing evidence:** [`testing.md`](testing.md).
@@ -33,4 +33,4 @@ Local instructions are reproducible and Docker-based. A working plan requires a 
 
 ## Publication gate
 
-The owner authorized pushing the repository. Public deployment, uploading a video, and submitting to Devpost still need separate explicit approval. Do not put API keys, PayPal secrets, buyer passwords, tokens, or webhook secrets in public files or submission text.
+The owner authorized and the source push is complete. Public deployment, uploading a video, and submitting to Devpost still need separate explicit approval. Do not put API keys, PayPal secrets, buyer passwords, tokens, or webhook secrets in public files or submission text.

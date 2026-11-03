@@ -10,7 +10,7 @@
 - **Webhook:** `PAYPAL_WEBHOOK_ID` is missing, and the local app does not have a public HTTPS address registered for PayPal delivery. The endpoint correctly returns an unconfigured response. Signature verification tests are mocked, not delivery evidence.
 - **Fireworks:** The configured model and Fireworks key are ready, and the real app preference route succeeded in both API smoke and Playwright UI checks using only `accounts/fireworks/models/deepseek-v4p1-flash-1017`.
 - **Judges:** There is no hosted demo. The local setup is reproducible, but successful AI planning requires a Fireworks key; the project does not currently provide judges a free, unrestricted working deployment.
-- **Publication:** the existing GitHub slug was empty when this fresh local build began. The local source and MIT license are prepared, but nothing has been pushed. A public repository, video upload, public deployment, and Devpost submission each need explicit owner approval.
+- **Publication:** source is public at [`work`](https://github.com/zalkabsi/Resqiva/tree/work), commit `465a265`, and GitHub detects the MIT license. No hosted deployment or YouTube video exists, and no Devpost submission has been made. Those actions remain separate approval and setup gates.
 - **Trademark:** the Resqiva name has not been cleared through a complete trademark search.
 
 ## Product limitations
