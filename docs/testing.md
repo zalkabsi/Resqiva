@@ -1,6 +1,6 @@
 # Testing and verification
 
-**Last verified:** November 4, 2026. Lint, typecheck, Vitest, and production build were rerun today. Local database smoke, browser E2E, Prisma validation, audit, benchmark, and live Fireworks evidence below were last run November 3. Re-run affected checks after code or environment changes.
+**Last verified:** November 4, 2026. After the deployment-readiness changes, Prisma client generation and schema validation, lint, typecheck, Vitest, and production build all passed on Node 24.22.1. The built-in browser rendered the production homepage; `/api/health` correctly returned 503 because this checkout has no reachable PostgreSQL server. The seed-dependent UI and database smoke/E2E/benchmark were not rerun. Their previous successful database-backed results below are from November 3.
 
 ## Automated results
 

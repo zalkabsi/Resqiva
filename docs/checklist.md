@@ -13,6 +13,7 @@ Repository rules and managed-environment status were rechecked November 4, 2026.
 - [x] Merchant can view inventory and orders, edit stock/prices without reducing committed units, import CSV to a selected demo store, create/edit demo stores and pickup windows, manually reconcile PayPal status, and confirm pickup for paid orders. E2E created a demo store and pickup window; inventory editing/import and paid-order pickup still lack browser/live-payment coverage.
 - [x] Shopper order-history API and receipt page are implemented; authorization/payload tests pass. No paid receipt exists because live capture is blocked.
 - [x] Clean database setup produced 3 fictional merchants/stores, 45 products, and 6 recipes.
+- [x] Demo seed updates leave live inventory, sold/reserved quantities, and pickup-window reservations untouched on reruns (code-path reviewed; the database rerun was not exercised this turn).
 - [x] Demo-store setup, pickup-window CRUD, and manual customer/merchant reconciliation actions are implemented and covered by route/unit tests. Real account signup, authentication, tenant isolation, store deletion, scheduled reconciliation, and refunds are not provided.
 
 ## AI and payments
@@ -29,14 +30,14 @@ Repository rules and managed-environment status were rechecked November 4, 2026.
 ## Quality and submission
 
 - [x] Clean local Postgres migration/seed and `npm run demo:up` startup verified.
-- [x] `npm run lint`, `npm run typecheck`, `npm test` (163/163 in 19 files), and `npm run build` passed November 4. `npm run smoke:local` and `npm run e2e:local` passed November 3; see [testing.md](testing.md) for dates and scope.
+- [x] `npm run db:generate`, `npx prisma validate`, `npm run lint`, `npm run typecheck`, `npm test` (163/163 in 19 files), and `npm run build` passed on Node 24.22.1 November 4. The built-in browser loaded the production homepage and confirmed the database-aware health response. `npm run smoke:local` and `npm run e2e:local` passed November 3; see [testing.md](testing.md) for dates and scope.
 - [x] `npm audit --omit=dev` found no production dependency advisories.
 - [ ] Full `npm audit` reports 17 moderate development-tool dependency findings rooted in `minimatch`, with no fix available. A dedicated credential scanner is unavailable, and a formal penetration test remains outstanding; a manual multi-agent source review and staged-file credential-pattern scan found no credentials.
 - [x] Public source is pushed at [`work`](https://github.com/zalkabsi/Resqiva/tree/work); the public GitHub page and branch return HTTP 200 and display the detected MIT license.
 - [ ] Free, unrestricted judge access from Dec 1, 2026 at 2:00 p.m. Pacific to Dec 15, 2026 at 8:00 a.m. Pacific is not ready: no public demo, and a local AI run requires the configured Fireworks credential.
 - [ ] Public YouTube demo under three minutes is not recorded or uploaded.
 - [x] Official rules and deadline were rechecked November 4, 2026; final submission content still needs owner review.
-- [ ] Hosted demo is unverified and not deployed; no Render URL exists. Hosting is optional under official rules when complete local run instructions work.
+- [ ] Hosted demo is unverified and not deployed; no Render URL exists. A paid Render Blueprint is prepared in [`render.yaml`](../render.yaml), with current listed service costs of about $13/month combined. Hosting is optional under official rules when complete local run instructions work.
 - [x] Pushed `work` to `origin` after the user authorized it. Public deployment, video upload, and Devpost submission remain gated on separate explicit approval.
 
 ## Exact external blockers

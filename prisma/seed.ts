@@ -323,9 +323,6 @@ async function seed() {
           },
         },
         update: {
-          quantityOnHand: item.quantity,
-          quantityReserved: 0,
-          quantitySold: 0,
           discountedPriceCents: item.discountedPriceCents,
           originalPriceCents: item.originalPriceCents,
           currency: "USD",
@@ -364,7 +361,6 @@ async function seed() {
           endsAt: plusDays(day, endHour),
           lastReservationAt: plusDays(day, startHour - 1, 30),
           capacityUnits: 100,
-          reservedUnits: 0,
           active: true,
         },
         create: {
