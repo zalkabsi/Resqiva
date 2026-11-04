@@ -1,0 +1,33 @@
+name: Checks
+
+on:
+  push:
+    branches: [main, work]
+  pull_request:
+    branches: [main, work]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Lint, test, and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - run: npm ci
+      - name: Generate Prisma Client
+        run: npm run db:generate
+        env:
+          DATABASE_URL: postgresql://resqiva:resqiva@127.0.0.1:5432/resqiva?schema=public
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+        env:
+          DATABASE_URL: postgresql://resqiva:resqiva@127.0.0.1:5432/resqiva?schema=public
