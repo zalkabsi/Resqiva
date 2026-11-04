@@ -1,6 +1,6 @@
 # Submission setup
 
-**Status:** Source is public on GitHub at [`work`](https://github.com/zalkabsi/Resqiva/tree/work); GitHub detects the MIT license. No Render URL exists; no deployment, video upload, or Devpost submission has been made.
+**Status:** Source is public on GitHub at [`work`](https://github.com/zalkabsi/Resqiva/tree/work); GitHub detects the MIT license. A Render Blueprint is prepared in [`render.yaml`](../render.yaml), but it has not been synced or deployed, so no Render URL exists. No video upload or Devpost submission has been made.
 
 ## Official requirements checked November 4, 2026
 
@@ -21,7 +21,7 @@ See [submission-package.md](submission-package.md) for draft title, pitch, proje
 ## Current submission links
 
 - **Repository:** [`zalkabsi/Resqiva`](https://github.com/zalkabsi/Resqiva/tree/work) is public on branch `work`. The root page serves the pushed branch and detects the MIT license.
-- **Hosted demo:** None. No Render URL exists; Render remains a proposal only.
+- **Hosted demo:** None. No Render URL exists; the prepared Blueprint still needs owner approval before it can create paid resources or expose the app publicly.
 - **Video:** None recorded or uploaded.
 - **Testing evidence:** [`testing.md`](testing.md).
 - **Model:** `accounts/fireworks/models/deepseek-v4p1-flash-1017`; app-level parser and planner usage passed with the real provider.
