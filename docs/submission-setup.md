@@ -1,6 +1,6 @@
 # Submission setup
 
-**Status:** Source is public on GitHub at [`work`](https://github.com/zalkabsi/Resqiva/tree/work), commit `263af60`; GitHub detects the MIT license. No Render URL exists; no deployment, video upload, or Devpost submission has been made.
+**Status:** Source is public on GitHub at [`work`](https://github.com/zalkabsi/Resqiva/tree/work); GitHub detects the MIT license. No Render URL exists; no deployment, video upload, or Devpost submission has been made.
 
 ## Official requirements checked November 4, 2026
 
@@ -20,7 +20,7 @@ See [submission-package.md](submission-package.md) for draft title, pitch, proje
 
 ## Current submission links
 
-- **Repository:** [`zalkabsi/Resqiva`](https://github.com/zalkabsi/Resqiva/tree/work) is public on branch `work` at `263af60`. The root page serves the pushed commit and detects the MIT license.
+- **Repository:** [`zalkabsi/Resqiva`](https://github.com/zalkabsi/Resqiva/tree/work) is public on branch `work`. The root page serves the pushed branch and detects the MIT license.
 - **Hosted demo:** None. No Render URL exists; Render remains a proposal only.
 - **Video:** None recorded or uploaded.
 - **Testing evidence:** [`testing.md`](testing.md).

@@ -38,7 +38,7 @@ Next.js, React, TypeScript, PostgreSQL, Prisma, Fireworks AI, PayPal Sandbox, Zo
 
 ## Submission links (not ready)
 
-- Repository: [`zalkabsi/Resqiva` on `work`](https://github.com/zalkabsi/Resqiva/tree/work) — public at commit `263af60`; GitHub detects the MIT license.
+- Repository: [`zalkabsi/Resqiva` on `work`](https://github.com/zalkabsi/Resqiva/tree/work) — public; GitHub detects the MIT license.
 - Hosted demo: none. Render is unverified and is not required by the official rules if complete run instructions work.
 - Public YouTube demo under three minutes: none recorded or uploaded.
 - Local setup: [README.md](../README.md).

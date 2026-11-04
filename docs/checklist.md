@@ -32,7 +32,7 @@ Repository rules and managed-environment status were rechecked November 4, 2026.
 - [x] `npm run lint`, `npm run typecheck`, `npm test` (163/163 in 19 files), and `npm run build` passed November 4. `npm run smoke:local` and `npm run e2e:local` passed November 3; see [testing.md](testing.md) for dates and scope.
 - [x] `npm audit --omit=dev` found no production dependency advisories.
 - [ ] Full `npm audit` reports 17 moderate development-tool dependency findings rooted in `minimatch`, with no fix available. A dedicated credential scanner is unavailable, and a formal penetration test remains outstanding; a manual multi-agent source review and staged-file credential-pattern scan found no credentials.
-- [x] Public source is pushed at [`work`](https://github.com/zalkabsi/Resqiva/tree/work), commit `263af60`; the public GitHub page and branch return HTTP 200 and display the detected MIT license.
+- [x] Public source is pushed at [`work`](https://github.com/zalkabsi/Resqiva/tree/work); the public GitHub page and branch return HTTP 200 and display the detected MIT license.
 - [ ] Free, unrestricted judge access from Dec 1, 2026 at 2:00 p.m. Pacific to Dec 15, 2026 at 8:00 a.m. Pacific is not ready: no public demo, and a local AI run requires the configured Fireworks credential.
 - [ ] Public YouTube demo under three minutes is not recorded or uploaded.
 - [x] Official rules and deadline were rechecked November 4, 2026; final submission content still needs owner review.
