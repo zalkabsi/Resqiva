@@ -1,6 +1,6 @@
 # Testing and verification
 
-**Last verified:** November 3, 2026. Results below are from the current fresh implementation. Re-run them after code or environment changes.
+**Last verified:** November 4, 2026. Lint, typecheck, Vitest, and production build were rerun today. Local database smoke, browser E2E, Prisma validation, audit, benchmark, and live Fireworks evidence below were last run November 3. Re-run affected checks after code or environment changes.
 
 ## Automated results
 
