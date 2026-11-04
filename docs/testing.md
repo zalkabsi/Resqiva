@@ -1,6 +1,6 @@
 # Testing and verification
 
-**Last verified:** November 4, 2026. After the deployment-readiness changes, Prisma client generation and schema validation, lint, typecheck, Vitest, and production build all passed on Node 24.22.1. The built-in browser rendered the production homepage; `/api/health` correctly returned 503 because this checkout has no reachable PostgreSQL server. The seed-dependent UI and database smoke/E2E/benchmark were not rerun. Their previous successful database-backed results below are from November 3.
+**Last verified:** November 4, 2026. After the deployment-readiness changes, Prisma client generation and schema validation, lint, typecheck, Vitest, and production build all passed locally on Node 24.22.1. The new GitHub Actions workflow also passed all automated checks on commit `20e0ff7`. The built-in browser rendered the production homepage; `/api/health` correctly returned 503 because this checkout has no reachable PostgreSQL server. The seed-dependent UI and database smoke/E2E/benchmark were not rerun. Their previous successful database-backed results below are from November 3.
 
 ## Automated results
 
@@ -11,6 +11,7 @@
 | `npm test` | Pass: 163 tests in 19 files | Unit and route tests. Provider, database-race, and reconciliation tests use controlled mocks; they are not live payment evidence. |
 | `npm run build` | Pass | Optimized Next.js production build completed, including `/orders/[orderId]` and `/api/orders`. |
 | `npx prisma validate` | Pass | Prisma 7.10.1 schema validated. |
+| GitHub Actions `Checks` | Pass, run #1 | Clean `npm ci`, Prisma client generation, lint, typecheck, 163 tests, and production build on Node 24.22.1. |
 | `npm run demo:up` | Pass after stopping a leftover local dev process | A fresh Docker volume received the initial migration and seed; Next.js reached Ready on port 3000. Seed output: 3 fictional merchants/stores, 45 products, 6 recipes. |
 | `npm run smoke:local` | Pass with live local app, database, and Fireworks | The app preference route returned validated preferences; planning returned 3 bundles; reservation held 3 units and cancellation restored them; repeated order-create and cancellation requests were exercised; customer history and merchant dashboard loaded. |
 | `npm run e2e:local` | Pass: 1 Playwright browser test | Chromium called the configured Fireworks-backed planner through the UI, displayed inventory-grounded bundles, loaded merchant inventory, created a fictional demo store, and created a pickup window. It stops before PayPal approval/capture. |
