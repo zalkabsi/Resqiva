@@ -25,7 +25,8 @@ services:
 
 databases:
   - name: resqiva-db
-    databaseName: resqiva
-    user: resqiva
+    databaseName: resqiva_db
+    user: resqiva_db_user
+    postgresMajorVersion: "18"
     plan: free
     region: frankfurt
