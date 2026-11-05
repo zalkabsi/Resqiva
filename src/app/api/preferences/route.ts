@@ -34,7 +34,13 @@ export async function POST(request: Request) {
   }
 
   try {
-    const preferences = await parsePreferences(input.data.prompt, input.data.selectedStoreId);
+    const preferences = await parsePreferences(input.data.prompt, input.data.selectedStoreId, {
+      formValues: {
+        budgetCents: input.data.budgetCents,
+        servings: input.data.servings,
+        mealCount: input.data.mealCount,
+      },
+    });
     return NextResponse.json({ preferences });
   } catch (error) {
     if (error instanceof PreferenceParserError) {

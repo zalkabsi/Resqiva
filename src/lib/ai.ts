@@ -35,6 +35,11 @@ export const preferenceRequestSchema = z
     // This comes from the user's explicit store selection in the UI. It is
     // preserved by the server and is never generated or changed by the model.
     selectedStoreId: z.string().trim().min(1).max(100).optional(),
+    // These values come from the form's explicit controls. They support the
+    // free local parser and are still validated again by the planning route.
+    budgetCents: z.number().int().min(100).max(100_000).optional(),
+    servings: z.number().int().min(1).max(12).optional(),
+    mealCount: z.number().int().min(1).max(7).optional(),
   })
   .strict();
 
@@ -59,6 +64,7 @@ export interface ParsePreferencesOptions {
   timeoutMs?: number;
   /** Used to make the provider output deterministic in unit tests. */
   currentDate?: string;
+  formValues?: Partial<Pick<PlannerPreferences, "budgetCents" | "servings" | "mealCount">>;
 }
 
 /**
@@ -77,6 +83,10 @@ export async function parsePreferences(
   }
 
   const provider = process.env.AI_PROVIDER;
+  if (provider === "local") {
+    return parseLocalPreferences(parsedInput.data.prompt, parsedInput.data.selectedStoreId, options);
+  }
+
   const configuredModel = process.env.AI_MODEL;
   const apiKey = process.env.FIREWORKS_API_KEY;
 
@@ -163,6 +173,141 @@ export async function parsePreferences(
     ...(parsedInput.data.selectedStoreId ? { storeId: parsedInput.data.selectedStoreId } : {}),
     sourceText: parsedInput.data.prompt,
   };
+}
+
+function parseLocalPreferences(
+  sourceText: string,
+  selectedStoreId: string | undefined,
+  options: ParsePreferencesOptions,
+): PlannerPreferences {
+  const currentDate = options.currentDate ?? todayInRiyadh();
+  const formValues = options.formValues ?? {};
+  const budgetCents = formValues.budgetCents ?? parseBudget(sourceText);
+  if (budgetCents === undefined) {
+    throw new PreferenceParserError(
+      "invalid_request",
+      "The free demo parser needs a budget. Set the budget control or include an amount such as $25.",
+    );
+  }
+
+  const servingMatch = new RegExp(`\\bfor\\s+(${CARDINAL_PATTERN})\\s+(?:people|persons?|servings?)\\b`, "i").exec(sourceText);
+  const mealMatch = new RegExp(`\\b(${CARDINAL_PATTERN})\\s+(?:(?:vegetarian|vegan|gluten[- ]free|dairy[- ]free|halal|low[- ]sodium)\\s+){0,2}(?:meals?|dinners?|lunches?|breakfasts?)\\b`, "i").exec(sourceText);
+  const relativeDateMatch = /\b(today|tomorrow)\b/i.exec(sourceText);
+  const explicitDateMatch = /\b(\d{4}-\d{2}-\d{2})\b/.exec(sourceText);
+  let pickupDate = explicitDateMatch?.[1] ?? currentDate;
+  if (!explicitDateMatch && relativeDateMatch?.[1]?.toLocaleLowerCase("en") === "tomorrow") {
+    pickupDate = shiftDate(currentDate, 1);
+  }
+
+  const exclusions: string[] = [];
+  const dietaryPatterns: Array<[RegExp, string]> = [
+    [/\bvegetarian\b/i, "vegetarian"],
+    [/\bvegan\b/i, "vegan"],
+    [/\bgluten[- ]free\b/i, "gluten_free"],
+    [/\bdairy[- ]free\b/i, "dairy_free"],
+    [/\bhalal\b/i, "halal"],
+    [/\blow[- ]sodium\b/i, "low_sodium"],
+  ];
+  for (const [pattern, value] of dietaryPatterns) {
+    if (pattern.test(sourceText)) exclusions.push(value);
+  }
+
+  const allergies = extractTerms(sourceText, [
+    /\b(?:allergic to|allergy to|allergies to|intolerant to|intolerant of)\s+([^,.;!?]+)/gi,
+    /\ballerg(?:y|ies)\s*:\s*([^,.;!?]+)/gi,
+  ]);
+  const avoided = extractTerms(sourceText, [
+    /\b(?:without|excluding|exclude|avoiding|avoid|no)\s*:?\s+([^,.;!?]+)/gi,
+  ]).filter((term) => !allergies.some((allergen) => normalizeTerm(allergen) === normalizeTerm(term)));
+  const preferredIngredients = extractTerms(sourceText, [
+    /\b(?:prefer|preferably|prioritize|prioritise)\s+([^,.;!?]+)/gi,
+  ]);
+
+  const preferences = preferenceOutputSchema.safeParse({
+    budgetCents,
+    servings: formValues.servings ?? (servingMatch?.[1] ? parseCardinal(servingMatch[1]) : undefined) ?? 1,
+    mealCount: formValues.mealCount ?? (mealMatch?.[1] ? parseCardinal(mealMatch[1]) : undefined) ?? 1,
+    exclusions,
+    allergies,
+    preferredIngredients,
+    avoidIngredients: avoided,
+    pickupDate,
+  });
+  if (!preferences.success) {
+    throw new PreferenceParserError(
+      "invalid_request",
+      "The free demo parser could not read those limits. Use a budget from $1 to $1,000 and a pickup date of today, tomorrow, or YYYY-MM-DD.",
+    );
+  }
+  if (preferences.data.pickupDate < currentDate) {
+    throw new PreferenceParserError("invalid_request", "Pickup cannot be planned for a date that has already passed in Riyadh.");
+  }
+
+  return {
+    ...preferences.data,
+    ...(selectedStoreId ? { storeId: selectedStoreId } : {}),
+    sourceText,
+  };
+}
+
+const CARDINALS: Record<string, number> = {
+  a: 1,
+  an: 1,
+  one: 1,
+  two: 2,
+  three: 3,
+  four: 4,
+  five: 5,
+  six: 6,
+  seven: 7,
+  eight: 8,
+  nine: 9,
+  ten: 10,
+  eleven: 11,
+  twelve: 12,
+};
+const CARDINAL_PATTERN = `(?:${Object.keys(CARDINALS).sort((left, right) => right.length - left.length).join("|")}|\\d{1,2})`;
+
+function parseCardinal(value: string): number | undefined {
+  const normalized = value.toLocaleLowerCase("en");
+  const parsed = CARDINALS[normalized] ?? (/^\d{1,2}$/.test(normalized) ? Number(normalized) : undefined);
+  return parsed !== undefined && parsed >= 1 && parsed <= 12 ? parsed : undefined;
+}
+
+function parseBudget(sourceText: string): number | undefined {
+  const match = /\$\s*(\d{1,4}(?:,\d{3})*(?:\.\d{1,2})?)|\b(?:under|below|up to|budget(?: of)?|within)\s+\$?\s*(\d{1,4}(?:,\d{3})*(?:\.\d{1,2})?)/i.exec(sourceText);
+  const amount = match?.[1] ?? match?.[2];
+  if (!amount) return undefined;
+  const value = Number(amount.replaceAll(",", ""));
+  return Number.isFinite(value) ? Math.round(value * 100) : undefined;
+}
+
+function extractTerms(sourceText: string, patterns: RegExp[]): string[] {
+  const terms = new Map<string, string>();
+  for (const pattern of patterns) {
+    for (const match of sourceText.matchAll(pattern)) {
+      const clause = match[1]
+        ?.replace(/\b(?:with\s+)?pick\s*up\b[\s\S]*$/i, "")
+        .replace(/\b(?:under|below|up to|budget|for|today|tomorrow)\b[\s\S]*$/i, "")
+        .replace(/\b(?:and\s+)?no\s+[^,.;!?]+$/i, "");
+      if (!clause) continue;
+      for (const value of clause.split(/\s*(?:,|\band\b|\bor\b|\/|&)\s*/i)) {
+        const term = value.trim().replace(/^(?:some|any|the|no|without|of)\s+/i, "").replace(/\s+/g, " ");
+        if (/^[\p{L}][\p{L}\p{N} -]{0,49}$/u.test(term)) terms.set(normalizeTerm(term), term);
+      }
+    }
+  }
+  return [...terms.values()];
+}
+
+function normalizeTerm(value: string): string {
+  return value.trim().toLocaleLowerCase("en");
+}
+
+function shiftDate(date: string, days: number): string {
+  const shifted = new Date(`${date}T00:00:00.000Z`);
+  shifted.setUTCDate(shifted.getUTCDate() + days);
+  return shifted.toISOString().slice(0, 10);
 }
 
 function readAssistantMessage(value: unknown): { model: string; content: string } | null {

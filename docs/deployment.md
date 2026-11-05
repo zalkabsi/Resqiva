@@ -1,6 +1,6 @@
-# Deployment
++# Deployment
 
-**Status:** The free Render Postgres database `resqiva-db` is available in Frankfurt. The web service has not been deployed yet, so there is no public app URL. The free Blueprint is committed in [`render.yaml`](../render.yaml).
+**Status:** The free Render web service `resqiva` is live in Frankfurt at [resqiva.onrender.com](https://resqiva.onrender.com), connected to the free Postgres database `resqiva-db`. The deployed app was verified in the built-in browser: the shopper demo session started, all three fictional stores loaded, and the store selector became available. The free Blueprint is committed in [`render.yaml`](../render.yaml).
 
 ## Render target
 
@@ -10,9 +10,9 @@ The Postgres instance uses PostgreSQL 18 and 1 GB of storage. Render created it 
 
 The web service runs Prisma migrations and the idempotent demo seed on each start. That is safe on the free service, which can stop and restart after idle periods; seed reruns preserve live inventory counts, sold/reserved quantities, and pickup-window reservations. The Blueprint generates `SESSION_SECRET`, enables demo login, and links `DATABASE_URL` to the Render Postgres resource. Automatic deploys are off.
 
-No `FIREWORKS_API_KEY` is configured on the hosted target. The meal-preference endpoint will report that the required Fireworks model is not configured until an owner adds a valid key through Render's Environment settings. Do not put the key in this repository or share it in chat. PayPal Sandbox credentials are also not configured: the last Sandbox OAuth test returned `invalid_client`, and no buyer approval, capture, or webhook has been verified. Checkout must not be represented as a completed payment flow until those checks pass.
+The hosted free deployment uses `AI_PROVIDER=local`: a bounded deterministic parser reads common dietary preferences and avoid terms, while budget, meal count, and servings come from validated form controls. It does not send requests to an AI provider or require an API key. The optional Fireworks path remains available when a valid key is configured separately; it is not enabled on this free deployment. PayPal Sandbox credentials are not configured: the last Sandbox OAuth test returned `invalid_client`, and no buyer approval, capture, or webhook has been verified. Checkout must not be represented as a completed payment flow until those checks pass.
 
-Render's authenticated Dashboard is needed to apply the Blueprint and create the web service. The existing free database's name, database name, user, PostgreSQL version, and region match `render.yaml`, so the Blueprint can attach it. Once the Blueprint is applied, verify the deploy, seeded data, health endpoint, demo login, and public app URL in the built-in browser.
+GitHub Actions `Checks` passed on the origin-validation fix. The current parser change still needs its workflow run to finish. The database expires before the full judging window, and the free web service can sleep after 15 minutes without traffic.
 
 References: [Render free plan limits](https://render.com/docs/free), [Blueprint YAML](https://render.com/docs/blueprint-spec).
 
@@ -24,12 +24,12 @@ The previous managed local environment reported an enforced restricted network p
 
 ## Hosted judge demo target
 
-The hosted demo needs further work before it can provide the complete requested experience:
+The hosted demo is available for browsing and meal planning. These pieces remain before it can provide the full requested experience:
 
-1. Apply the Blueprint from the Render Dashboard, then verify build/start, migrations, idempotent seed, `/api/health`, demo login, and the public URL.
-2. Add a valid server-side Fireworks key through Render's secure Environment settings to enable natural-language preference parsing.
-3. Replace the invalid PayPal Sandbox credential pair, configure a Sandbox buyer and webhook, then verify buyer approval, capture, and the matching inventory transition.
-4. Arrange a database that remains available through December 15. The current free database expires December 5.
-5. Verify free-tier capacity and service availability across the judging window.
+1. Replace the invalid PayPal Sandbox credential pair, configure a Sandbox buyer and webhook, then verify buyer approval, capture, and the matching inventory transition.
+2. If the hackathon demo must demonstrate AI, configure a valid server-side Fireworks key and set `AI_PROVIDER=fireworks`; the deployed free parser is deterministic and does not make AI calls.
+3. Arrange a database that remains available through December 15. The current free database expires December 5.
+4. Verify free-tier capacity and service availability across the judging window.
 
-Official rules allow complete local setup/run instructions instead of a hosted URL, so hosting is optional when a working repository is reproducible. No live Render web service or app URL has been verified yet.
+Official rules allow complete local setup/run instructions instead of a hosted URL, so hosting is optional when a working repository is reproducible.
+

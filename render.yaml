@@ -19,9 +19,7 @@ services:
       - key: ENABLE_DEMO_LOGIN
         value: "true"
       - key: AI_PROVIDER
-        value: fireworks
-      - key: AI_MODEL
-        value: accounts/fireworks/models/deepseek-v4p1-flash-1017
+        value: local
 
 databases:
   - name: resqiva-db

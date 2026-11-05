@@ -54,6 +54,46 @@ describe("preference output validation", () => {
 });
 
 describe("parsePreferences", () => {
+  it("parses the supported free demo request without calling an AI provider", async () => {
+    vi.stubEnv("AI_PROVIDER", "local");
+    vi.stubEnv("AI_MODEL", "");
+    vi.stubEnv("FIREWORKS_API_KEY", "");
+    const fetchMock = vi.fn<typeof fetch>();
+
+    const parsed = await parsePreferences(
+      "Plan two vegetarian dinners for three people under $25, no peanuts, with pickup tomorrow.",
+      "store-demo-1",
+      {
+        fetchImpl: fetchMock,
+        currentDate: "2026-11-03",
+        formValues: { budgetCents: 2_500, servings: 3, mealCount: 2 },
+      },
+    );
+
+    expect(parsed).toEqual({
+      budgetCents: 2_500,
+      servings: 3,
+      mealCount: 2,
+      exclusions: ["vegetarian"],
+      allergies: [],
+      preferredIngredients: [],
+      avoidIngredients: ["peanuts"],
+      pickupDate: "2026-11-04",
+      storeId: "store-demo-1",
+      sourceText: "Plan two vegetarian dinners for three people under $25, no peanuts, with pickup tomorrow.",
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("requires a clear budget in free mode when the form did not provide one", async () => {
+    vi.stubEnv("AI_PROVIDER", "local");
+    vi.stubEnv("AI_MODEL", "");
+    vi.stubEnv("FIREWORKS_API_KEY", "");
+
+    await expect(parsePreferences("Plan a vegetarian dinner", undefined, { currentDate: "2026-11-03" }))
+      .rejects.toMatchObject({ code: "invalid_request", message: expect.stringContaining("needs a budget") });
+  });
+
   it("calls only the configured Fireworks model and preserves source/store on the server", async () => {
     setRequiredEnv();
     const fetchMock = vi.fn(async (_url: string | URL | Request, _init?: RequestInit) => {
