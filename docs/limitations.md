@@ -1,16 +1,15 @@
 # Limitations and known blockers
 
-**Status and official rules checked:** November 4, 2026. Lint, typecheck, unit tests, and production build passed again on November 4; live app and provider evidence remains from November 3. The environment was connected/running and its restricted network policy was enforced. This is a local hackathon demonstration, not a production marketplace.
+**Status and official rules checked:** November 5, 2026. The free Render demo is live and browser-verified. GitHub Actions passed on the final code update with 165 tests and a production build. This is a hackathon demonstration, not a production marketplace.
 
 ## Live integration and submission blockers
 
-- **PayPal Sandbox:** The current client ID and secret bindings report ready, but the last actual OAuth test on November 3 returned `invalid_client`. The app's order-create route cannot progress to buyer approval, capture, order confirmation, or the sold-stock update until matching Sandbox credentials from the same app authenticate. Do not send credential values in chat.
+- **PayPal Sandbox:** The last OAuth test returned `invalid_client`. The app's order-create route cannot progress to buyer approval, capture, order confirmation, or the sold-stock update until matching Sandbox credentials from the same app authenticate. Keep credential values private.
 - **Buyer approval:** A Sandbox buyer account must approve checkout after merchant OAuth works. No order has been buyer-approved or captured.
-- **PayPal browser network access:** as observed November 4, managed egress is restricted and enforced. `api-m.sandbox.paypal.com` is allowed; `www.paypal.com` (SDK) and `www.sandbox.paypal.com` (approval page) are absent from the current effective allowlist. Browser checkout may fail until both are added by the environment owner through the supported policy workflow. No network bypass was attempted.
-- **Webhook:** `PAYPAL_WEBHOOK_ID` is absent from the current environment bindings, and the local app does not have a public HTTPS address registered for PayPal delivery. The endpoint correctly returns an unconfigured response. Signature verification tests are mocked, not delivery evidence.
-- **Fireworks:** The configured model and Fireworks key are ready, and the real app preference route succeeded in both API smoke and Playwright UI checks using only `accounts/fireworks/models/deepseek-v4p1-flash-1017`.
-- **Judges:** There is no hosted demo or Render URL. The local setup is reproducible, but successful AI planning requires a Fireworks key; the project does not currently provide judges a free, unrestricted working deployment.
-- **Publication:** source is public at [`work`](https://github.com/zalkabsi/Resqiva/tree/work), and GitHub detects the MIT license. No deployment, YouTube video upload, or Devpost submission has been made. Those actions remain separate approval and setup gates.
+- **Webhook:** A Sandbox webhook ID is not configured for the service, and real webhook delivery is unverified. Signature verification tests are mocked, not delivery evidence.
+- **AI:** The Fireworks-backed preference route and planner were exercised locally with `accounts/fireworks/models/deepseek-v4p1-flash-1017`. The free Render demo uses `AI_PROVIDER=local` and makes no external AI calls.
+- **Judge access:** The hosted demo is live, but its free PostgreSQL database expires December 5, before the judging period ends December 15. The free web service can also sleep after 15 minutes without traffic. Arrange continued access or provide complete run instructions.
+- **Publication:** source is public at [`work`](https://github.com/zalkabsi/Resqiva/tree/work), the MIT license is detectable, and the hosted demo is live. No YouTube video has been uploaded and no Devpost entry has been filed.
 - **Trademark:** the Resqiva name has not been cleared through a complete trademark search.
 
 ## Product limitations

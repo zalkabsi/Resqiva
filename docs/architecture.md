@@ -7,7 +7,7 @@
 - **Next.js and TypeScript application:** customer marketplace, meal planning, merchant inventory/order screens, and server routes.
 - **Customer receipts:** `/api/orders` returns the signed-in demo shopper's safe order summary; `/orders/[orderId]` displays the matching receipt after server capture.
 - **PostgreSQL and Prisma:** fictional demo merchants, products and stock, pickup windows, plan runs, reservations, orders, payment references, webhook events, audit records, and impact counters.
-- **Preference parser:** calls only Fireworks model `accounts/fireworks/models/deepseek-v4p1-flash-1017`; its output is a proposed structured preference object.
+- **Preference parser:** supports a Fireworks-backed mode using `accounts/fireworks/models/deepseek-v4p1-flash-1017` and a bounded deterministic local mode for the free hosted demo. Both produce validated preference objects; neither can select inventory or authorize financial actions.
 - **Deterministic optimizer:** matches recipes to real inventory and enforces hard constraints before scoring preferences. It is the authority for product selection and math.
 - **Reservation/order service:** transactionally reserves stock, computes order totals from database records, and tracks status transitions.
 - **PayPal adapter:** server-side Sandbox OAuth, Orders v2 creation/capture/query, idempotency, and webhook verification.
@@ -38,4 +38,4 @@ The target state vocabulary is `PENDING`, `RESERVED`, `PAYMENT_APPROVED`, `PAID`
 
 ## Verification status
 
-The local app API and Playwright browser test both exercised the actual Fireworks parser route and planner with `accounts/fireworks/models/deepseek-v4p1-flash-1017`. Prisma migration/seed, production build, and customer order-route tests passed. The API smoke verified reservation/release counts and cancellation retries. PayPal OAuth returned `invalid_client`, so buyer approval, capture, sold-stock finalization, webhook delivery, and payment recovery remain unverified. See [testing.md](testing.md).
+The November 3 local API smoke and Playwright browser test exercised the actual Fireworks parser route and planner with `accounts/fireworks/models/deepseek-v4p1-flash-1017`. The free Render demo uses the local parser; its health, shopper session, seeded stores, and sample planner flow were browser-verified. GitHub Actions passed on the final code update with 165 tests and a production build. PayPal OAuth returned `invalid_client`, so buyer approval, capture, sold-stock finalization, webhook delivery, and payment recovery remain unverified. See [testing.md](testing.md).

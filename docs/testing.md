@@ -1,6 +1,6 @@
 # Testing and verification
 
-**Last verified:** November 4, 2026. After the deployment-readiness changes, Prisma client generation and schema validation, lint, typecheck, Vitest, and production build all passed locally on Node 24.22.1. The new GitHub Actions workflow also passed all automated checks on commit `20e0ff7`. The built-in browser rendered the production homepage; `/api/health` correctly returned 503 because this checkout has no reachable PostgreSQL server. The seed-dependent UI and database smoke/E2E/benchmark were not rerun. Their previous successful database-backed results below are from November 3.
+**Last verified:** November 5, 2026. GitHub Actions run #13 passed on the final code update, including clean install, Prisma generation, lint, typecheck, 165 tests, and production build. Documentation-only run #14 also passed. In the built-in browser, the deployed service returned `/api/health` status `ok`; the shopper session, three fictional stores, and a sample plan with three feasible options under $25 were verified. The Render deployment is live on commit `923fc653e2117ef795ec1670b248413197a6a88f`. Earlier database smoke/E2E/benchmark results below are from November 3.
 
 ## Automated results
 
@@ -8,16 +8,16 @@
 |---|---|---|
 | `npm run lint` | Pass | ESLint completed with no findings. |
 | `npm run typecheck` | Pass | Strict TypeScript check completed with no errors. |
-| `npm test` | Pass: 163 tests in 19 files | Unit and route tests. Provider, database-race, and reconciliation tests use controlled mocks; they are not live payment evidence. |
-| `npm run build` | Pass | Optimized Next.js production build completed, including `/orders/[orderId]` and `/api/orders`. |
+| `npm test` | Pass: 165 tests in 19 files (November 5 CI) | Unit and route tests. Provider, database-race, and reconciliation tests use controlled mocks; they are not live payment evidence. |
+| `npm run build` | Pass (November 5 CI) | Optimized Next.js production build completed, including `/orders/[orderId]` and `/api/orders`. |
 | `npx prisma validate` | Pass | Prisma 7.10.1 schema validated. |
-| GitHub Actions `Checks` | Pass, run #1 | Clean `npm ci`, Prisma client generation, lint, typecheck, 163 tests, and production build on Node 24.22.1. |
+| GitHub Actions `Checks` | Pass, run #13 for code; run #14 for docs | Run #13: clean `npm ci`, Prisma client generation, lint, typecheck, 165 tests, and production build on Node 24.22.1. [Run #14](https://github.com/zalkabsi/Resqiva/actions/runs/42005848058) also passed for the documentation update. |
 | `npm run demo:up` | Pass after stopping a leftover local dev process | A fresh Docker volume received the initial migration and seed; Next.js reached Ready on port 3000. Seed output: 3 fictional merchants/stores, 45 products, 6 recipes. |
 | `npm run smoke:local` | Pass with live local app, database, and Fireworks | The app preference route returned validated preferences; planning returned 3 bundles; reservation held 3 units and cancellation restored them; repeated order-create and cancellation requests were exercised; customer history and merchant dashboard loaded. |
 | `npm run e2e:local` | Pass: 1 Playwright browser test | Chromium called the configured Fireworks-backed planner through the UI, displayed inventory-grounded bundles, loaded merchant inventory, created a fictional demo store, and created a pickup window. It stops before PayPal approval/capture. |
 | `npm run benchmark:optimizer` | Pass: 12 scenarios × 25 repetitions | Seeded inventory comparison against the greedy discount-ranking baseline; 11/12 scenarios feasible in both, 0 independent optimizer-output violations, median 5.201 ms vs 4.990 ms, p95 24.117 ms vs 21.259 ms. Full method and limits are in [optimization.md](optimization.md). |
 
-The API smoke called the actual Resqiva preference route and an actual Fireworks API using only `accounts/fireworks/models/deepseek-v4p1-flash-1017`; this is live AI integration evidence. It returned 3 planner bundles, held and restored 3 units exactly, retried/cancelled idempotently, and loaded customer and merchant data. Its order-creation request returned HTTP 502 with a sanitized PayPal Sandbox credential rejection (`invalid_client`). Repeating the request did not create a payment. The webhook endpoint returned HTTP 503 because `PAYPAL_WEBHOOK_ID` is not configured. No buyer approval, capture, paid order, webhook delivery, or live payment reconciliation was verified.
+The November 3 local API smoke called the actual Resqiva preference route and Fireworks API using `accounts/fireworks/models/deepseek-v4p1-flash-1017`; this is live AI integration evidence for the configured Fireworks mode. It returned 3 planner bundles, held and restored 3 units exactly, retried/cancelled idempotently, and loaded customer and merchant data. Its order-creation request returned HTTP 502 with a sanitized PayPal Sandbox credential rejection (`invalid_client`). Repeating the request did not create a payment. The webhook endpoint returned HTTP 503 because `PAYPAL_WEBHOOK_ID` was not configured in that environment. No buyer approval, capture, paid order, webhook delivery, or live payment reconciliation was verified. The current free Render deployment uses `AI_PROVIDER=local` and makes no external AI calls.
 
 The smoke is an API/database integration check, not a browser E2E test. The Playwright test covers shopper planning and basic merchant store/pickup creation, not inventory editing, CSV import, or checkout. Both use fictional seeded data. No output from a mocked PayPal test should be presented as evidence of a real payment.
 

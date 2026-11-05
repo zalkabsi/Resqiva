@@ -1,6 +1,6 @@
 # PayPal integration
 
-**Status:** Sandbox work in progress. Production payments are out of scope.
+**Status:** Sandbox integration is implemented, but an end-to-end Sandbox payment is unverified. Production payments are out of scope.
 
 ## Official flow
 
@@ -23,10 +23,9 @@ Webhook registration requires an HTTPS listener and webhook ID. PayPal's [webhoo
 
 ## Current verification and blockers
 
-- Environment status reports the Sandbox client bindings ready, but the real app order-create route reached Sandbox OAuth and received `invalid_client`. Matching Sandbox app credentials from the same app are required before a real order can be tested.
+- The real app order-create route reached Sandbox OAuth and received `invalid_client`. Matching Sandbox app credentials from the same app are required before a real order can be tested.
 - Customer and merchant manual reconciliation controls are implemented and have mocked route/transition tests. No buyer-approved checkout, capture, recorded transaction ID, or live reconciliation has been verified.
-- No webhook ID or reachable HTTPS endpoint was available; real webhook delivery is unverified.
-- The enforced managed network policy allows `api-m.sandbox.paypal.com` but not `www.paypal.com` (SDK) or `www.sandbox.paypal.com` (approval page); both browser hosts may need to be added through the approved network configuration workflow.
+- A webhook ID has not been configured and real webhook delivery is unverified.
 - Tests that stub `fetch` may verify code paths, but must be labeled mocked and must not be presented as PayPal integration evidence.
 - The application must not log credentials, OAuth tokens, or buyer secrets. Do not publish privileged test-account credentials.
 

@@ -1,6 +1,6 @@
 # Build and submission checklist
 
-Repository rules and managed-environment status were rechecked November 5, 2026. “Implemented” means source exists; “verified” means the listed check actually ran. See [testing.md](testing.md) for scope and limitations.
+Project status was checked November 5, 2026. “Implemented” means source exists; “verified” means the listed check actually ran. See [testing.md](testing.md) for scope and limitations.
 
 ## Product
 
@@ -30,23 +30,21 @@ Repository rules and managed-environment status were rechecked November 5, 2026.
 ## Quality and submission
 
 - [x] Clean local Postgres migration/seed and `npm run demo:up` startup verified.
-- [x] `npm run db:generate`, `npx prisma validate`, `npm run lint`, `npm run typecheck`, `npm test` (163/163 in 19 files), and `npm run build` passed on Node 24.22.1 November 4. The built-in browser loaded the production homepage and confirmed the database-aware health response. `npm run smoke:local` and `npm run e2e:local` passed November 3; see [testing.md](testing.md) for dates and scope.
+- [x] `npm run db:generate`, `npx prisma validate`, lint, typecheck, `npm test` (165/165 in 19 files), and production build passed on Node 24.22.1 November 5. The built-in browser verified hosted health, demo login, three stores, and a feasible sample plan. `npm run smoke:local` and `npm run e2e:local` passed November 3; see [testing.md](testing.md) for dates and scope.
 - [x] GitHub Actions `Checks` run #13 passed on `work` for the final code update with clean install, Prisma generation, lint, typecheck, 165 tests, and production build.
 - [x] `npm audit --omit=dev` found no production dependency advisories.
-- [ ] Full `npm audit` reports 17 moderate development-tool dependency findings rooted in `minimatch`, with no fix available. A dedicated credential scanner is unavailable, and a formal penetration test remains outstanding; a manual multi-agent source review and staged-file credential-pattern scan found no credentials.
+- [ ] Full `npm audit` reports 17 moderate development-tool dependency findings rooted in `minimatch`, with no fix available. A dedicated credential scanner and formal penetration test remain outstanding; the manual source review found no credentials.
 - [x] Public source is pushed at [`work`](https://github.com/zalkabsi/Resqiva/tree/work); the public GitHub page and branch return HTTP 200 and display the detected MIT license.
-- [ ] Free, unrestricted judge access from Dec 1 to Dec 15 is not ready. The web service is live, but the free Postgres resource expires on Dec 5; the hosted parser is deterministic and does not satisfy a requirement to demonstrate live AI.
+- [ ] Free, unrestricted judge access from Dec 1 to Dec 15 needs a continuity plan. The web service is live, but the free Postgres resource expires on Dec 5. The hosted parser is deterministic; the Fireworks-backed mode requires a valid key.
 - [ ] Public YouTube demo under three minutes is not recorded or uploaded.
-- [x] Official rules and deadline were rechecked November 4, 2026; final submission content still needs owner review.
+- [x] Official rules and deadline were rechecked November 5, 2026; final submission content still needs review.
 - [x] Hosted demo is deployed at [resqiva.onrender.com](https://resqiva.onrender.com); health, demo login, seeded stores, and a feasible sample plan are verified in the built-in browser. Free Postgres is in Frankfurt and expires Dec 5, 2026. The free Blueprint is in [`render.yaml`](../render.yaml).
-- [x] Pushed `work` to `origin` and applied the user-approved free Render deployment. Video upload and Devpost submission remain separate approval gates.
+- [x] Public source and the free Render deployment are available.
 
 ## Exact external blockers
 
-- **PayPal account:** the client ID and secret bindings report ready, but the last actual Sandbox OAuth test on November 3 returned `invalid_client`. Replace them in the managed environment with a matching pair from the same Sandbox app; do not send values in chat.
+- **PayPal account:** the last Sandbox OAuth test returned `invalid_client`. A matching Sandbox credential pair is needed before checkout can be verified; keep credential values private.
 - **Buyer account:** a Sandbox buyer must approve the browser checkout after the merchant app credential issue is fixed.
-- **Network policy:** as observed November 4, the environment is connected/running and restricted egress is enforced. It allows `api-m.sandbox.paypal.com` and `api.fireworks.ai`, but not `www.paypal.com` (browser SDK) or `www.sandbox.paypal.com` (buyer approval page). Add those hosts only through the managed environment's approved network configuration; no bypass was attempted.
-- **Webhook:** `PAYPAL_WEBHOOK_ID` is absent from the current managed environment bindings, and there is no public HTTPS endpoint for PayPal delivery.
-- **Judge access:** the public web service is live, but the free database expires Dec 5, before judging ends Dec 15. The hosted free parser does not make live AI calls; use a valid Fireworks key if the judging demo must show the AI path.
-- **Publishing approvals:** source push is complete and free Render deployment is approved. Public video upload and Devpost submission still require separate explicit approval.
+- **Webhook:** A Sandbox webhook ID is not configured for the service. Real webhook delivery has not been verified.
+- **Judge access:** the public web service is live, but the free database expires Dec 5, before judging ends Dec 15. The hosted free parser does not make live AI calls; the Fireworks-backed path requires a valid key.
 

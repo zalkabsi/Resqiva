@@ -4,7 +4,7 @@
 
 ## Render target
 
-The Blueprint defines a free Node web service and a free Render Postgres database, both in Frankfurt. Render currently limits free web services to 512 MB RAM: they spin down after 15 minutes without traffic and can take about a minute to wake. Free instance hours (750 hours per workspace per month) are shared across the workspace; My Workspace already has three other free web services.
+The Blueprint defines a free Node web service and a free Render Postgres database, both in Frankfurt. Render currently limits free web services to 512 MB RAM: they spin down after 15 minutes without traffic and can take about a minute to wake. Free instance hours (750 hours per workspace per month) are shared across the workspace.
 
 The Postgres instance uses PostgreSQL 18 and 1 GB of storage. Render created it on November 5, 2026, and reports that it expires on **December 5, 2026 at 09:07 UTC**. Free Postgres has no backups; after expiry it is unavailable unless upgraded during Render's 14-day grace period, after which its data is deleted. This database will not remain available through the full judging window ending December 15.
 
@@ -19,8 +19,6 @@ References: [Render free plan limits](https://render.com/docs/free), [Blueprint 
 ## Local deployment target
 
 The reproducible path is PostgreSQL through Docker Compose, Prisma migrations/seeds, and the Next.js application. A fresh Docker volume received the migration and deterministic seed, and `npm run demo:up` started Next.js successfully after a leftover local dev process was stopped. Keep secrets in a local environment file that is excluded from Git; `.env.example` contains placeholders only.
-
-The previous managed local environment reported an enforced restricted network policy allowing `api.fireworks.ai`, `api-m.sandbox.paypal.com`, and Prisma binary downloads. App-level Fireworks calls succeeded there. PayPal OAuth returned `invalid_client`; that environment's policy did not list `www.paypal.com` (browser JavaScript SDK) or `www.sandbox.paypal.com` (Sandbox buyer approval page).
 
 ## Hosted judge demo target
 

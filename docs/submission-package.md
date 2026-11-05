@@ -1,6 +1,6 @@
 # PayPal AI Hackathon 2026 submission package draft
 
-**Review state:** Local draft only. The source repository is public, but this is not ready to submit: PayPal Sandbox credentials are rejected, no buyer-approved capture is verified, there is no hosted judge demo, and the required public video is not recorded. Recheck [official rules](https://paypalaihackathon.devpost.com/rules) before use.
+**Review state:** Submission copy is drafted. The public repository and hosted free demo are available, and the free demo was browser-verified. The video is not recorded, PayPal Sandbox checkout is not verified, and the free database expires before the judging period ends. Recheck [official rules](https://paypalaihackathon.devpost.com/rules) before submission.
 
 ## Title
 
@@ -8,7 +8,9 @@
 
 ## Elevator pitch
 
-Resqiva turns a shopper's meal preferences into practical bundles built from available surplus inventory. A pinned Fireworks model parses the request, then deterministic server-side rules validate stock, price, budget, store, pickup window, expiry, and dietary constraints before the shopper can reserve a bundle for PayPal Sandbox checkout.
+**Rescue surplus groceries. Build meals that fit your budget.**
+
+Resqiva turns a shopper's meal request into practical bundles built from available surplus inventory. A Fireworks-backed parser is available for natural-language preferences; the free hosted demo uses a deterministic local parser. Server-side rules validate stock, price, budget, store, pickup window, expiry, and dietary constraints. PayPal Sandbox checkout code is included, but a successful payment has not been verified.
 
 ## Project description draft
 
@@ -16,9 +18,9 @@ Resqiva turns a shopper's meal preferences into practical bundles built from ava
 
 **What it does.** Shoppers choose a fictional store, describe meals in natural language, set serving and budget limits, and compare bundles grounded in the seeded inventory. They can reserve a selected bundle. The merchant view shows demo inventory, orders, stock and price editing, CSV import, and paid-order pickup controls. A customer order-history API and receipt page are included.
 
-**How it works.** `accounts/fireworks/models/deepseek-v4p1-flash-1017` parses preferences into a strict schema. It has no authority over product IDs, prices, stock, or payments. A deterministic optimizer checks inventory and hard constraints, calculates totals from integer-cent records, and returns explanations. The server reserves stock transactionally and the PayPal adapter uses Sandbox Orders API calls, idempotency keys, status queries, and webhook verification code.
+**How it works.** In Fireworks mode, `accounts/fireworks/models/deepseek-v4p1-flash-1017` parses preferences into a strict schema. In the free hosted mode, a bounded deterministic parser handles supported requests without external AI calls. Neither parser has authority over product IDs, prices, stock, or payments. A deterministic optimizer checks inventory and hard constraints, calculates totals from integer-cent records, and returns explanations. The server reserves stock transactionally. The PayPal adapter includes Sandbox Orders API calls, idempotency keys, status queries, and webhook verification.
 
-**Current evidence.** The app's Fireworks-backed parser and planner passed a real local API smoke and browser E2E run. The suite passed 163 tests in 19 files; the updated E2E created a demo store and pickup window; local setup/migration/seed and the production build passed. PayPal Sandbox OAuth returned `invalid_client`; no buyer approval, capture, paid order, webhook delivery, or live payment reconciliation is verified. Do not describe checkout as completed until those steps pass with a matching Sandbox app and buyer.
+**Current evidence.** The Fireworks-backed parser and planner passed a real local API smoke and browser E2E run. The latest code workflow passed lint, typecheck, 165 tests, and the production build. The free Render deployment is live; the built-in browser verified the health endpoint, shopper session, all three fictional stores, and a sample plan with three feasible options under $25. PayPal Sandbox OAuth returned `invalid_client`; no buyer approval, capture, paid order, webhook delivery, or live payment reconciliation is verified. Do not describe checkout as completed.
 
 **How it was built.** Next.js 16, React 19, TypeScript, PostgreSQL, Prisma 7, Zod, Fireworks AI, PayPal JavaScript SDK and Orders API Sandbox, Vitest, Playwright, and Docker Compose. Demo records are fictional and deterministic. The local starting checkout was empty; this implementation began on November 3, 2026.
 
@@ -30,37 +32,27 @@ The seeded optimizer benchmark compared 12 request/store scenarios with a greedy
 
 **Lessons learned.** AI can help translate preferences, while deterministic server rules should decide what is actually available and payable. A browser approval event is not proof of capture. Unknown food-safety metadata should remain unknown, and simulated records should not be turned into impact claims.
 
-**Future work.** Verify the full Sandbox buyer approval/capture/inventory/pickup path, test actual webhook delivery and recovery, add scheduled reconciliation/refund handling, arrange free judge access, and only then record a truthful demonstration.
+**Future work.** Resolve the Sandbox credentials and verify buyer approval, capture, inventory updates, pickup, and webhook delivery. Arrange demo access that lasts through the judging period. Record the actual application with truthful narration and submit before the deadline.
 
 ## Built-with tags
 
-Next.js, React, TypeScript, PostgreSQL, Prisma, Fireworks AI, PayPal Sandbox, Zod, Vitest, Playwright, Docker Compose.
+Next.js, React, TypeScript, Node.js, PostgreSQL, Prisma, Zod, Fireworks AI, PayPal Developer Platform, PayPal Sandbox, Render, Docker Compose, Vitest, Playwright, AI, FoodTech, Meal Planning, Food Waste.
 
 ## Submission links (not ready)
 
 - Repository: [`zalkabsi/Resqiva` on `work`](https://github.com/zalkabsi/Resqiva/tree/work) — public; GitHub detects the MIT license.
-- Hosted demo: none. Render is unverified and is not required by the official rules if complete run instructions work.
+- Hosted demo: [resqiva.onrender.com](https://resqiva.onrender.com), verified in the built-in browser. The free database expires December 5, before judging ends December 15.
 - Public YouTube demo under three minutes: none recorded or uploaded.
 - Local setup: [README.md](../README.md).
 - Test evidence and blockers: [testing.md](testing.md) and [limitations.md](limitations.md).
 
-## Video storyboard concept (165 seconds; record only after real capture works)
+## Video narration and editing prompt
 
-| Time | Scene | Evidence to show |
-|---|---|---|
-| 0–15 s | Introduce meal affordability and surplus problem | Describe the product without claiming measured real-world impact. |
-| 15–35 s | Open the fictional merchant stock view | Show demo label, product quantity, discount price, and order/stock controls. |
-| 35–65 s | Enter a natural-language request | Show the request and identify the exact Fireworks model in the narration or on-screen notes. |
-| 65–95 s | Compare returned meal bundles | Show item-level inventory, quantities, recipe, pickup window, and calculated savings. |
-| 95–125 s | Complete checkout | Only record after real Sandbox buyer approval, server capture, and saved paid status are verified. Never replace this with a mock or redirect. |
-| 125–145 s | Show shopper receipt and merchant order | Verify the same paid order, pickup reference, inventory change, and later pickup status. |
-| 145–165 s | Summarize actual prototype evidence | State real test counts and distinguish fictional demo units from real food diversion. |
+The [narration script](../submission-assets/resqiva-demo-narration.md) targets about 2 minutes 20 seconds. The [production prompt](../submission-assets/resqiva-video-prompt.md) asks for real app footage, Microsoft Bing/Azure Speech narration, readable subtitles, and clear disclosure of the hosted parser and unverified PayPal flow. The video has not been recorded or uploaded.
 
-If the payment blocker remains, do not present this as a completed-payment demo. Rework the story and get owner review before recording; the current project does not yet meet the intended successful-checkout narrative.
+## Thumbnail
 
-## Thumbnail concept (3:2)
-
-Warm ivory background with a deep-green market basket at center, containing a short row of illustrated rescued ingredients. A clean recipe card overlaps the basket and shows a few inventory-backed ingredient rows and an honest total. Use a small PayPal Sandbox mark only if permitted; otherwise identify the integration in text. Main title: “Resqiva”; subtitle: “Surplus groceries → practical meals”. Keep the fictional-demo label visible and avoid impact numbers or merchant logos.
+Upload the generated [3:2 Resqiva thumbnail](../submission-assets/resqiva-devpost-thumbnail.jpg). It uses an illustrated basket and meal-planning card, with no embedded text or third-party marks.
 
 ## Sponsor-prize eligibility checklist
 
@@ -70,17 +62,16 @@ Warm ivory background with a deep-green market basket at center, containing a sh
 | AI tool | Real Fireworks parser call and browser planning passed with the required model. | Implemented and tested. |
 | AG Grid | Merchant inventory uses a standard HTML table. | Not integrated; no AG Grid prize claim. |
 | Channel3 | No product-catalog enrichment call exists. | Not integrated; no claim. |
-| Render | A free Postgres database is provisioned; the app service is not. | No hosted demo URL has been verified; no deployment claim. |
+| Render | The free web service is live with the free Postgres database. | Hosted demo is verified; the database expires December 5, before judging ends December 15. |
 | Postman | No Postman collection or public workspace has been prepared. | Not integrated; no claim. |
 
 ## Final access checklist
 
 - [ ] Confirm owner/team eligibility.
-- [ ] Replace the rejected credential pair through the secure managed environment with matching Sandbox app credentials.
+- [ ] Configure a matching Sandbox app credential pair before retesting checkout; keep the values private.
 - [ ] Use a Sandbox buyer to approve and verify order creation, capture, paid order, inventory update, merchant view, pickup confirmation, retry, and cancellation.
 - [ ] Configure Sandbox `PAYPAL_WEBHOOK_ID` and verify delivery to a reachable HTTPS endpoint, including duplicate events.
-- [ ] Ensure the managed network policy permits the PayPal browser SDK host through its approved configuration process.
-- [ ] Provide judges free, unrestricted access through the December 1–15 judging period without asking them to supply a Fireworks key.
+- [ ] Provide judges free, unrestricted access through the December 1–15 judging period; the current free database expires December 5.
 - [x] Push the repository publicly and verify the MIT license is detectable on GitHub.
-- [ ] Obtain separate explicit owner approval for public hosting, video upload, and Devpost submission.
 - [ ] Recheck rules, public URLs, license visibility, test evidence, and video duration immediately before submission.
+

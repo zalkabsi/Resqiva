@@ -8,12 +8,12 @@ All merchants, stores, products, and pickup locations in the seed data are ficti
 
 ## Current status
 
-- The Fireworks preference parser is pinned to `accounts/fireworks/models/deepseek-v4p1-flash-1017`. It suggests structured preferences only; it cannot select inventory, set prices, authorize payment, or change stock. There is no alternate model or silent fallback.
+- Preference parsing has two explicit modes: the Fireworks integration uses `accounts/fireworks/models/deepseek-v4p1-flash-1017`, while `AI_PROVIDER=local` runs the deterministic, key-free demo parser. Neither mode selects inventory, sets prices, authorizes payment, or changes stock.
 - The app has a deterministic meal optimizer, transactional stock reservations, merchant inventory editing and CSV import, demo-store and pickup-window management, order management, and customer/merchant payment-reconciliation controls. PayPal Sandbox routes and webhook verification are implemented.
 - Customer order history and a receipt page are included; a receipt shows paid only after server-verified capture.
 - A successful PayPal Sandbox order, buyer approval, and capture have **not** been verified. The currently configured Sandbox credentials were rejected by OAuth (`invalid_client`). A Sandbox buyer account is also needed for approval.
-- The source is public on GitHub at [`work`](https://github.com/zalkabsi/Resqiva/tree/work); GitHub detects the MIT license. The free Render Postgres database is available, but the web service is not deployed yet; the database expires on December 5, 2026. A public YouTube demo and Devpost submission have not been made.
-- Lint, type-check, 163 unit/route tests, Prisma validation, and production build passed locally on Node 24.22.1 and in GitHub Actions on November 4. Database smoke, clean local setup, and browser E2E last passed November 3. Exact scope and PayPal blockers are recorded in [`docs/testing.md`](docs/testing.md).
+- The public source is on GitHub at [`work`](https://github.com/zalkabsi/Resqiva/tree/work), with the MIT license. The free Render demo is live at [resqiva.onrender.com](https://resqiva.onrender.com). Its Postgres database expires on December 5, 2026, before judging ends December 15; see [deployment status](docs/deployment.md).
+- GitHub Actions passed on the final code update with lint, typecheck, 165 tests, and a production build. The built-in browser also verified the hosted health endpoint, shopper session, three demo stores, and sample meal plan. Detailed dates and scope are in [`docs/testing.md`](docs/testing.md).
 
 ## Local setup
 
@@ -21,7 +21,7 @@ All merchants, stores, products, and pickup locations in the seed data are ficti
 
 - Node.js 24.x and npm (the exact Node version is in `.node-version`)
 - Docker Compose
-- A Fireworks API key for natural-language preference parsing
+- A Fireworks API key for the Fireworks-backed preference parser (optional when using `AI_PROVIDER=local`)
 - PayPal Sandbox client ID and secret for payment testing
 - A PayPal Sandbox buyer account to approve checkout
 
@@ -36,7 +36,7 @@ npm ci
 cp .env.example .env
 ```
 
-Edit `.env` locally. Set `SESSION_SECRET` to a random value with at least 32 bytes (for example, `openssl rand -hex 32`). For real preference parsing, provide `FIREWORKS_API_KEY`; keep `AI_PROVIDER=fireworks` and `AI_MODEL=accounts/fireworks/models/deepseek-v4p1-flash-1017`. For Sandbox checkout, set matching `PAYPAL_CLIENT_ID` and `PAYPAL_CLIENT_SECRET` values from the same PayPal Sandbox app. Add `PAYPAL_WEBHOOK_ID` only when testing against a webhook registered with PayPal. Never commit `.env`, API keys, client secrets, buyer credentials, access tokens, or webhook secrets.
+Edit `.env` locally. Set `SESSION_SECRET` to a random value with at least 32 bytes (for example, `openssl rand -hex 32`). For Fireworks-backed parsing, set `AI_PROVIDER=fireworks`, provide `FIREWORKS_API_KEY`, and use `AI_MODEL=accounts/fireworks/models/deepseek-v4p1-flash-1017`. For the free keyless parser, use `AI_PROVIDER=local`. For Sandbox checkout, set matching `PAYPAL_CLIENT_ID` and `PAYPAL_CLIENT_SECRET` values from the same PayPal Sandbox app. Add `PAYPAL_WEBHOOK_ID` only when testing against a webhook registered with PayPal. Never commit `.env`, API keys, client secrets, buyer credentials, access tokens, or webhook secrets.
 
 Start the local database, apply migrations, load the deterministic demo catalog, and launch Next.js:
 
@@ -59,7 +59,7 @@ To import inventory, upload a CSV with these required headers: `sku,name,categor
 
 ## AI, inventory, and food safety
 
-The Fireworks model extracts preferences such as budget, servings, dietary exclusions, allergies, pickup timing, and meal count. The server validates that result, loads store inventory, and runs the deterministic optimizer. Product IDs, prices, stock, and checkout totals come from database records—not from the model or browser.
+When `AI_PROVIDER=fireworks`, the Fireworks model extracts preferences such as budget, servings, dietary exclusions, allergies, pickup timing, and meal count. In `local` mode, a bounded deterministic parser handles supported requests without an external provider. In both modes, the server validates preferences, loads store inventory, and runs the deterministic optimizer. Product IDs, prices, stock, and checkout totals come from database records, not from the model or browser.
 
 Unknown or incomplete allergen information stays unknown. Resqiva does not certify food as allergy-safe. Sample savings and surplus-unit counts are calculated from fictional demo records and do not establish real food-waste diversion or environmental impact. Each checkout is for one store; Resqiva does not provide escrow or automatic multi-merchant payment splitting.
 
@@ -94,3 +94,4 @@ With the local app running, `npm run smoke:local` exercises the app API flow. It
 ## License
 
 Resqiva is released under the [MIT License](LICENSE).
+

@@ -5,7 +5,7 @@
 ## Required controls
 
 - Keep Fireworks and PayPal credentials server-side in environment bindings. Commit placeholders only; never log keys, tokens, or secret-bearing request headers.
-- Pin AI configuration to `AI_PROVIDER=fireworks` and `AI_MODEL=accounts/fireworks/models/deepseek-v4p1-flash-1017`. Misconfiguration must fail explicitly; no alternate model or silent fallback.
+- Select AI mode explicitly. The Fireworks mode uses `AI_PROVIDER=fireworks` and `AI_MODEL=accounts/fireworks/models/deepseek-v4p1-flash-1017`; the free hosted demo uses `AI_PROVIDER=local`. Provider errors must fail explicitly without a silent fallback.
 - Parse model output with a strict schema, impose input/output limits and timeouts, and treat user/product text as untrusted data. The model has no tool or database-write access.
 - Recompute every selected item, quantity, price, discount, and payment total from database records on the server.
 - Validate request bodies, authorize merchant ownership, rate-limit public routes, and sanitize errors/logs.

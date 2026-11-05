@@ -19,6 +19,6 @@ Resqiva is intended to combine a consumer grocery-surplus catalog, quantity- and
 
 ## Name and repository
 
-The GitHub slug [`zalkabsi/Resqiva`](https://github.com/zalkabsi/Resqiva) exists and currently appears empty. Populate that repository if and when publication is approved; do not create a duplicate under the same account.
+The public [`zalkabsi/Resqiva` repository](https://github.com/zalkabsi/Resqiva/tree/work) contains the project source and MIT license on the `work` branch.
 
 No legal trademark clearance has been completed. The [USPTO search guidance](https://www.uspto.gov/trademarks/search/federal-trademark-searching) recommends searching exact and similar marks and related goods. Treat “Resqiva” as an un-cleared working name until an appropriate search is completed.

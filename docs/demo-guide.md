@@ -1,19 +1,25 @@
-# Demo guide
+# Demo video guide
 
-**Status:** Planned script, not a recording. Do not record the payment segment until a genuine Sandbox buyer approval and server capture are verified.
+**Status:** Narration and production prompt are prepared; no video has been recorded or uploaded. Target runtime is about 2 minutes 20 seconds. The YouTube video must be under 3 minutes and show the actual app.
 
-Target runtime: approximately 165 seconds, below the official three-minute limit. Show the functioning application on its target device and use actual data and provider responses.
+Use [resqiva-demo-narration.md](../submission-assets/resqiva-demo-narration.md) for voiceover and [resqiva-video-prompt.md](../submission-assets/resqiva-video-prompt.md) for editing directions.
 
-| Time | Planned scene | Proof to show |
+| Time | Scene | Show |
 |---|---|---|
-| 0–15 s | Introduce surplus food and meal affordability problem | Clear problem statement, no unsupported impact claims |
-| 15–35 s | Open fictional merchant inventory | Visible demo-data label, stock, markdown price, pickup window |
-| 35–65 s | Enter a natural-language meal request | The app's Fireworks-backed parser and planner passed a real local browser test; disclose the exact model name in project materials |
-| 65–95 s | Compare feasible meal bundles | Item-level inventory, quantities, integer-cent totals, savings calculation, constraints and recipe explanation |
-| 95–125 s | Complete PayPal Sandbox checkout | Real buyer approval, server-side capture result, PayPal order/capture ID kept out of public logs if sensitive |
-| 125–145 s | Show merchant order and updated inventory | Same paid order visible to merchant; stock decrement reconciles to order lines |
-| 145–165 s | Summarize measured prototype results | Actual test metrics only, with simulated impact labeled as simulated |
+| 0:00–0:18 | Introduce Resqiva | The problem of turning surplus grocery deals into meals that fit a budget |
+| 0:18–0:35 | Set demo context | Live shopper view, selected fictional store, sample request |
+| 0:35–1:05 | Plan a meal | Request fields and the three sample options, including prices and pickup windows |
+| 1:05–1:32 | Explain the planner | Server-side inventory and budget validation; clarify the hosted free parser is deterministic |
+| 1:32–1:58 | Show merchant tools | Fictional inventory and order views |
+| 1:58–2:20 | Close honestly | Explain PayPal Sandbox is unverified; do not depict a successful payment |
 
-The app-level Fireworks request and planner passed a local browser test. PayPal Sandbox credentials currently return `invalid_client`, and no buyer approval or capture is verified. Do not record the checkout as completed or substitute a fake transaction. The payment segment remains blocked; this storyboard is not ready to record as a successful end-to-end demo.
+Use a Microsoft Bing/Azure Speech neural voice for narration. Include readable English subtitles. Do not show private credentials or real customer information. Keep fictional sample data labeled, and do not claim real food-waste impact from demo records.
 
-Before recording: confirm public video visibility, duration under three minutes, no unlicensed third-party assets or marks, no secret values in browser/server logs, and owner approval for upload. No video has been uploaded.
+The free hosted demo uses `AI_PROVIDER=local`; the Fireworks model is available in a separately configured run. Only claim to demonstrate the Fireworks-backed path if the recording actually uses it. PayPal Sandbox credentials currently return `invalid_client`, so buyer approval, capture, and webhook delivery remain unverified.
+
+## Before upload
+
+- Confirm the video is public or unlisted, has no password, and runs for less than 3 minutes.
+- Watch the exported file to verify the narration, subtitles, app footage, and total runtime.
+- Remove credentials, tokens, private account details, and unlicensed third-party material.
+- Provide judges free, unrestricted demo access through December 15, 2026; the current free database expires December 5.
