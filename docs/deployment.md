@@ -1,16 +1,20 @@
 # Deployment
 
-**Status:** Render Blueprint prepared; not deployed or synced to the Render Dashboard.
+**Status:** The free Render Postgres database `resqiva-db` is available in Frankfurt. The web service has not been deployed yet, so there is no public app URL. The free Blueprint is committed in [`render.yaml`](../render.yaml).
 
 ## Render target
 
-[`render.yaml`](../render.yaml) defines a Node web service and managed Postgres in Frankfurt. The web service runs on the smallest paid always-on plan, and Postgres uses the smallest paid plan so the database does not expire during the judging period. Render's current listed rates are about $7/month for the web service and $6/month for Postgres, or about $13/month before any additional usage. Confirm the current dashboard estimate before creating resources.
+The Blueprint defines a free Node web service and a free Render Postgres database, both in Frankfurt. Render currently limits free web services to 512 MB RAM: they spin down after 15 minutes without traffic and can take about a minute to wake. Free instance hours (750 hours per workspace per month) are shared across the workspace; My Workspace already has three other free web services.
 
-The Blueprint pins Node 24, runs Prisma migrations on startup, seeds the demo data once after the first successful deploy, and disables automatic deploys. Seed reruns preserve inventory counts, sold/reserved units, and pickup reservations. It generates `SESSION_SECRET` and prompts for `FIREWORKS_API_KEY` during the first Blueprint setup. Do not put secret values in this file or in GitHub.
+The Postgres instance uses PostgreSQL 18 and 1 GB of storage. Render created it on November 5, 2026, and reports that it expires on **December 5, 2026 at 09:07 UTC**. Free Postgres has no backups; after expiry it is unavailable unless upgraded during Render's 14-day grace period, after which its data is deleted. This database will not remain available through the full judging window ending December 15.
 
-The service would be publicly reachable at its Render URL. Demo login is enabled for judge access. PayPal credentials are intentionally not configured: the last Sandbox OAuth test returned `invalid_client`, and no buyer approval, capture, or webhook has been verified. Checkout must not be represented as a completed payment flow until those checks pass.
+The web service runs Prisma migrations and the idempotent demo seed on each start. That is safe on the free service, which can stop and restart after idle periods; seed reruns preserve live inventory counts, sold/reserved quantities, and pickup-window reservations. The Blueprint generates `SESSION_SECRET`, enables demo login, and links `DATABASE_URL` to the Render Postgres resource. Automatic deploys are off.
 
-No Render resources have been created. Creating this Blueprint would incur the listed monthly charges and publish a public app, so both remain subject to the owner's explicit approval.
+No `FIREWORKS_API_KEY` is configured on the hosted target. The meal-preference endpoint will report that the required Fireworks model is not configured until an owner adds a valid key through Render's Environment settings. Do not put the key in this repository or share it in chat. PayPal Sandbox credentials are also not configured: the last Sandbox OAuth test returned `invalid_client`, and no buyer approval, capture, or webhook has been verified. Checkout must not be represented as a completed payment flow until those checks pass.
+
+Render's authenticated Dashboard is needed to apply the Blueprint and create the web service. The existing free database's name, database name, user, PostgreSQL version, and region match `render.yaml`, so the Blueprint can attach it. Once the Blueprint is applied, verify the deploy, seeded data, health endpoint, demo login, and public app URL in the built-in browser.
+
+References: [Render free plan limits](https://render.com/docs/free), [Blueprint YAML](https://render.com/docs/blueprint-spec).
 
 ## Local deployment target
 
@@ -20,13 +24,12 @@ The previous managed local environment reported an enforced restricted network p
 
 ## Hosted judge demo target
 
-The uploaded master prompt requests a hosted demo that loads reliably, supports seeded interaction, uses the configured server-side AI key, and demonstrates Sandbox checkout. Before publishing a host:
+The hosted demo needs further work before it can provide the complete requested experience:
 
-1. Confirm app startup, migrations, and deterministic seed/reset from an empty database. Local startup was verified previously; repeat on the hosting provider.
-2. Configure HTTPS, environment secrets, database backups/retention, health checks, and safe logs.
-3. Verify that judges do not need to provide their own AI key.
-4. Run the actual PayPal Sandbox buyer-approval/capture flow and verify merchant inventory changes.
-5. Recheck free and unrestricted judge access through the judging period.
-6. Obtain explicit owner approval before deploying publicly and incurring the monthly hosting charges.
+1. Apply the Blueprint from the Render Dashboard, then verify build/start, migrations, idempotent seed, `/api/health`, demo login, and the public URL.
+2. Add a valid server-side Fireworks key through Render's secure Environment settings to enable natural-language preference parsing.
+3. Replace the invalid PayPal Sandbox credential pair, configure a Sandbox buyer and webhook, then verify buyer approval, capture, and the matching inventory transition.
+4. Arrange a database that remains available through December 15. The current free database expires December 5.
+5. Verify free-tier capacity and service availability across the judging window.
 
-Official rules allow complete local setup/run instructions instead of a hosted URL, so hosting is not an official requirement if the working repository is reproducible. No deployment has been attempted or verified.
+Official rules allow complete local setup/run instructions instead of a hosted URL, so hosting is optional when a working repository is reproducible. No live Render web service or app URL has been verified yet.
