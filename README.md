@@ -12,7 +12,7 @@ All merchants, stores, products, and pickup locations in the seed data are ficti
 - The app has a deterministic meal optimizer, transactional stock reservations, merchant inventory editing and CSV import, demo-store and pickup-window management, order management, and customer/merchant payment-reconciliation controls. PayPal Sandbox routes and webhook verification are implemented.
 - Customer order history and a receipt page are included; a receipt shows paid only after server-verified capture.
 - A successful PayPal Sandbox order, buyer approval, and capture have **not** been verified. The currently configured Sandbox credentials were rejected by OAuth (`invalid_client`). A Sandbox buyer account is also needed for approval.
-- The source is public on GitHub at [`work`](https://github.com/zalkabsi/Resqiva/tree/work); GitHub detects the MIT license. A Render Blueprint is prepared but not deployed. A public YouTube demo and Devpost submission have not been made.
+- The source is public on GitHub at [`work`](https://github.com/zalkabsi/Resqiva/tree/work); GitHub detects the MIT license. The free Render Postgres database is available, but the web service is not deployed yet; the database expires on December 5, 2026. A public YouTube demo and Devpost submission have not been made.
 - Lint, type-check, 163 unit/route tests, Prisma validation, and production build passed locally on Node 24.22.1 and in GitHub Actions on November 4. Database smoke, clean local setup, and browser E2E last passed November 3. Exact scope and PayPal blockers are recorded in [`docs/testing.md`](docs/testing.md).
 
 ## Local setup
