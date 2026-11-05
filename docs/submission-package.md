@@ -70,7 +70,7 @@ Warm ivory background with a deep-green market basket at center, containing a sh
 | AI tool | Real Fireworks parser call and browser planning passed with the required model. | Implemented and tested. |
 | AG Grid | Merchant inventory uses a standard HTML table. | Not integrated; no AG Grid prize claim. |
 | Channel3 | No product-catalog enrichment call exists. | Not integrated; no claim. |
-| Render | Deployment is only a proposal. | Not deployed or verified; no claim. |
+| Render | A free Postgres database is provisioned; the app service is not. | No hosted demo URL has been verified; no deployment claim. |
 | Postman | No Postman collection or public workspace has been prepared. | Not integrated; no claim. |
 
 ## Final access checklist
