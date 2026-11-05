@@ -1,6 +1,6 @@
 # Submission setup
 
-**Status:** Source is public on GitHub at [`work`](https://github.com/zalkabsi/Resqiva/tree/work); GitHub detects the MIT license. A Render Blueprint is prepared in [`render.yaml`](../render.yaml), but it has not been synced or deployed, so no Render URL exists. No video upload or Devpost submission has been made.
+**Status:** Source is public on GitHub at [`work`](https://github.com/zalkabsi/Resqiva/tree/work); GitHub detects the MIT license. The free Render Postgres database is available in Frankfurt and expires on December 5, 2026. The web service is not deployed yet, so no Render URL exists. No video upload or Devpost submission has been made.
 
 ## Official requirements checked November 4, 2026
 
@@ -21,7 +21,7 @@ See [submission-package.md](submission-package.md) for draft title, pitch, proje
 ## Current submission links
 
 - **Repository:** [`zalkabsi/Resqiva`](https://github.com/zalkabsi/Resqiva/tree/work) is public on branch `work`. The root page serves the pushed branch and detects the MIT license.
-- **Hosted demo:** None. No Render URL exists; the prepared Blueprint still needs owner approval before it can create paid resources or expose the app publicly.
+- **Hosted demo:** Not deployed. The free database is provisioned; the web service still needs the Blueprint applied through the signed-in Render Dashboard. It will be publicly reachable with demo login enabled once deployed.
 - **Video:** None recorded or uploaded.
 - **Testing evidence:** [`testing.md`](testing.md).
 - **Model:** `accounts/fireworks/models/deepseek-v4p1-flash-1017`; app-level parser and planner usage passed with the real provider.
@@ -30,8 +30,8 @@ See [submission-package.md](submission-package.md) for draft title, pitch, proje
 
 ## Judge access blocker
 
-Local instructions are reproducible and Docker-based. A working plan requires a Fireworks API key; public docs contain only placeholders. The managed environment's key is not for redistribution. To give judges a free, unrestricted working demo, configure a hosted server-side key or another owner-approved access arrangement, and verify access throughout judging. The current account setup does not satisfy this yet.
+Local instructions are reproducible and Docker-based. The hosted Fireworks key is not configured, so the AI preference parser will not work until a valid key is entered securely in Render. The free Postgres database expires December 5, before the judging window ends December 15; arrange a replacement or upgrade before then to keep the hosted demo available.
 
 ## Publication gate
 
-The owner authorized and the source push is complete. Public deployment, uploading a video, and submitting to Devpost still need separate explicit approval. No deployment, video upload, or Devpost submission has been made. Do not put API keys, PayPal secrets, buyer passwords, tokens, or webhook secrets in public files or submission text.
+The owner authorized free Render deployment and the source push is complete. The free database is provisioned, but the web service is not deployed yet. Public video upload and Devpost submission still need separate explicit approval. Do not put API keys, PayPal secrets, buyer passwords, tokens, or webhook secrets in public files or submission text.
