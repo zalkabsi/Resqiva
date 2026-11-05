@@ -35,11 +35,11 @@ Repository rules and managed-environment status were rechecked November 4, 2026.
 - [x] `npm audit --omit=dev` found no production dependency advisories.
 - [ ] Full `npm audit` reports 17 moderate development-tool dependency findings rooted in `minimatch`, with no fix available. A dedicated credential scanner is unavailable, and a formal penetration test remains outstanding; a manual multi-agent source review and staged-file credential-pattern scan found no credentials.
 - [x] Public source is pushed at [`work`](https://github.com/zalkabsi/Resqiva/tree/work); the public GitHub page and branch return HTTP 200 and display the detected MIT license.
-- [ ] Free, unrestricted judge access from Dec 1, 2026 at 2:00 p.m. Pacific to Dec 15, 2026 at 8:00 a.m. Pacific is not ready: no public demo, and a local AI run requires the configured Fireworks credential.
+- [ ] Free, unrestricted judge access from Dec 1 to Dec 15 is not ready. The web service is not deployed yet, the free Postgres resource expires on Dec 5, and hosted AI needs a valid Fireworks key.
 - [ ] Public YouTube demo under three minutes is not recorded or uploaded.
 - [x] Official rules and deadline were rechecked November 4, 2026; final submission content still needs owner review.
-- [ ] Hosted demo is unverified and not deployed; no Render URL exists. A paid Render Blueprint is prepared in [`render.yaml`](../render.yaml), with current listed service costs of about $13/month combined. Hosting is optional under official rules when complete local run instructions work.
-- [x] Pushed `work` to `origin` after the user authorized it. Public deployment, video upload, and Devpost submission remain gated on separate explicit approval.
+- [ ] Hosted demo is not deployed; no Render URL exists yet. Free Postgres is available in Frankfurt and expires Dec 5, 2026. The free Blueprint is in [`render.yaml`](../render.yaml); the web service still needs to be created and verified.
+- [x] Pushed `work` to `origin`. The user has authorized free public Render deployment; the Dashboard still requires sign-in to apply the Blueprint. Video upload and Devpost submission remain separate approval gates.
 
 ## Exact external blockers
 
@@ -47,5 +47,5 @@ Repository rules and managed-environment status were rechecked November 4, 2026.
 - **Buyer account:** a Sandbox buyer must approve the browser checkout after the merchant app credential issue is fixed.
 - **Network policy:** as observed November 4, the environment is connected/running and restricted egress is enforced. It allows `api-m.sandbox.paypal.com` and `api.fireworks.ai`, but not `www.paypal.com` (browser SDK) or `www.sandbox.paypal.com` (buyer approval page). Add those hosts only through the managed environment's approved network configuration; no bypass was attempted.
 - **Webhook:** `PAYPAL_WEBHOOK_ID` is absent from the current managed environment bindings, and there is no public HTTPS endpoint for PayPal delivery.
-- **Judge access:** a stable publicly accessible demo or an approved plan for free, unrestricted judge access is still needed. Local setup is reproducible but needs a Fireworks key to use AI.
-- **Publishing approvals:** source push is complete. Public deployment, video upload, and Devpost submission still require explicit approval.
+- **Judge access:** free Render deployment is approved, but the web service is not deployed. The free database expires Dec 5, before judging ends Dec 15, and hosted AI needs a valid Fireworks key.
+- **Publishing approvals:** source push is complete and free Render deployment is approved. Public video upload and Devpost submission still require separate explicit approval.
