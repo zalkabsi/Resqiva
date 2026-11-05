@@ -2,12 +2,11 @@ services:
   - type: web
     name: resqiva
     runtime: node
-    plan: 0.5c-512mb
+    plan: free
     region: frankfurt
     branch: work
     buildCommand: npm ci && npm run build
-    startCommand: npm run db:deploy && npm start
-    initialDeployHook: npm run db:seed
+    startCommand: npm run db:deploy && npm run db:seed && npm start
     autoDeployTrigger: "off"
     healthCheckPath: /api/health
     envVars:
@@ -23,12 +22,10 @@ services:
         value: fireworks
       - key: AI_MODEL
         value: accounts/fireworks/models/deepseek-v4p1-flash-1017
-      - key: FIREWORKS_API_KEY
-        sync: false
 
 databases:
   - name: resqiva-db
     databaseName: resqiva
     user: resqiva
-    plan: 0.1c-256mb
+    plan: free
     region: frankfurt
