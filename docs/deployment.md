@@ -1,6 +1,6 @@
 +# Deployment
 
-**Status:** The free Render web service `resqiva` is live in Frankfurt at [resqiva.onrender.com](https://resqiva.onrender.com), connected to the free Postgres database `resqiva-db`. The deployed app was verified in the built-in browser: the shopper demo session started, all three fictional stores loaded, and the store selector became available. The free Blueprint is committed in [`render.yaml`](../render.yaml).
+**Status:** The free Render web service `resqiva` is live in Frankfurt at [resqiva.onrender.com](https://resqiva.onrender.com), connected to the free Postgres database `resqiva-db`. The built-in browser verified the health endpoint (`status: ok`), shopper session, all three fictional stores, and a sample plan that returned three feasible options within the default $25 budget. The free Blueprint is committed in [`render.yaml`](../render.yaml).
 
 ## Render target
 
@@ -12,7 +12,7 @@ The web service runs Prisma migrations and the idempotent demo seed on each star
 
 The hosted free deployment uses `AI_PROVIDER=local`: a bounded deterministic parser reads common dietary preferences and avoid terms, while budget, meal count, and servings come from validated form controls. It does not send requests to an AI provider or require an API key. The optional Fireworks path remains available when a valid key is configured separately; it is not enabled on this free deployment. PayPal Sandbox credentials are not configured: the last Sandbox OAuth test returned `invalid_client`, and no buyer approval, capture, or webhook has been verified. Checkout must not be represented as a completed payment flow until those checks pass.
 
-GitHub Actions `Checks` passed on the origin-validation fix. The current parser change still needs its workflow run to finish. The database expires before the full judging window, and the free web service can sleep after 15 minutes without traffic.
+GitHub Actions `Checks` passed on the final code update, including lint, typecheck, 165 tests, and production build. The database expires before the full judging window, and the free web service can sleep after 15 minutes without traffic.
 
 References: [Render free plan limits](https://render.com/docs/free), [Blueprint YAML](https://render.com/docs/blueprint-spec).
 

@@ -31,14 +31,14 @@ Repository rules and managed-environment status were rechecked November 5, 2026.
 
 - [x] Clean local Postgres migration/seed and `npm run demo:up` startup verified.
 - [x] `npm run db:generate`, `npx prisma validate`, `npm run lint`, `npm run typecheck`, `npm test` (163/163 in 19 files), and `npm run build` passed on Node 24.22.1 November 4. The built-in browser loaded the production homepage and confirmed the database-aware health response. `npm run smoke:local` and `npm run e2e:local` passed November 3; see [testing.md](testing.md) for dates and scope.
-- [x] GitHub Actions `Checks` workflow passed on `work` with clean install, Prisma generation, lint, typecheck, 163 tests, and production build before the current parser update; see the newest run for its final result.
+- [x] GitHub Actions `Checks` run #13 passed on `work` for the final code update with clean install, Prisma generation, lint, typecheck, 165 tests, and production build.
 - [x] `npm audit --omit=dev` found no production dependency advisories.
 - [ ] Full `npm audit` reports 17 moderate development-tool dependency findings rooted in `minimatch`, with no fix available. A dedicated credential scanner is unavailable, and a formal penetration test remains outstanding; a manual multi-agent source review and staged-file credential-pattern scan found no credentials.
 - [x] Public source is pushed at [`work`](https://github.com/zalkabsi/Resqiva/tree/work); the public GitHub page and branch return HTTP 200 and display the detected MIT license.
 - [ ] Free, unrestricted judge access from Dec 1 to Dec 15 is not ready. The web service is live, but the free Postgres resource expires on Dec 5; the hosted parser is deterministic and does not satisfy a requirement to demonstrate live AI.
 - [ ] Public YouTube demo under three minutes is not recorded or uploaded.
 - [x] Official rules and deadline were rechecked November 4, 2026; final submission content still needs owner review.
-- [x] Hosted demo is deployed at [resqiva.onrender.com](https://resqiva.onrender.com); service, demo login, and seeded store list are verified. Free Postgres is in Frankfurt and expires Dec 5, 2026. The free Blueprint is in [`render.yaml`](../render.yaml).
+- [x] Hosted demo is deployed at [resqiva.onrender.com](https://resqiva.onrender.com); health, demo login, seeded stores, and a feasible sample plan are verified in the built-in browser. Free Postgres is in Frankfurt and expires Dec 5, 2026. The free Blueprint is in [`render.yaml`](../render.yaml).
 - [x] Pushed `work` to `origin` and applied the user-approved free Render deployment. Video upload and Devpost submission remain separate approval gates.
 
 ## Exact external blockers
