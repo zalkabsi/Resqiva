@@ -84,8 +84,13 @@ export function isSameOriginMutation(request: Request): boolean {
   if (!origin) return process.env.NODE_ENV !== "production";
   try {
     const parsed = new URL(origin);
-    const requestUrl = new URL(request.url);
-    return parsed.origin === requestUrl.origin;
+    const externalHostname = process.env.RENDER_EXTERNAL_HOSTNAME;
+    // Render terminates TLS at its edge, so request.url can use http internally
+    // even when the browser reached the service over https.
+    const expectedOrigin = externalHostname
+      ? new URL(`https://${externalHostname}`).origin
+      : new URL(request.url).origin;
+    return parsed.origin === expectedOrigin;
   } catch {
     return false;
   }
